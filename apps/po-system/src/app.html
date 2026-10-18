@@ -317,7 +317,7 @@
 const SB_URL = 'SB_URL_HERE';
 const SB_KEY = 'SB_ANON_KEY';
 //  Bump with every change, so anyone can see which copy they have open.
-const APP_VERSION = '1.4 (18 Oct 2026)';
+const APP_VERSION = '1.5 (18 Oct 2026)';
 const LOGO     = 'LOGO_SRC';
 const LOGO_PDF = 'LOGO_PDF_SRC';
 
@@ -1239,13 +1239,14 @@ function drawSuppliers(){
 
   const rows = S.suppliers.filter(s => !s.archived);
   $('#supTable').innerHTML =
-    '<table><thead><tr><th>Supplier</th><th>Ledger code</th><th>PO code</th><th>Address</th>' +
+    '<table><thead><tr><th>Supplier</th><th>Ledger code</th><th>PO code</th><th>Address</th><th>Email</th>' +
     '<th class="num">Terms</th><th class="num">VAT</th><th class="num">POs</th><th></th></tr></thead><tbody>' +
     rows.map(s => {
       const n = S.pos.filter(p => p.supplier_id === s.id).length;
       return '<tr><td><b>'+esc(s.name)+'</b></td><td>'+esc(s.code)+'</td>' +
         '<td>'+(s.po_code ? '<b>'+esc(s.po_code)+'</b>' : '<span class="pill p-cancelled">not set</span>')+'</td>' +
         '<td class="small">'+esc([s.address1, s.address2, s.postcode].filter(Boolean).join(', '))+'</td>' +
+        '<td class="small">'+esc(s.email || '')+'</td>' +
         '<td class="num">'+esc(s.terms)+' days</td>' +
         '<td class="num">'+Math.round(Number(s.vat_rate)*100)+'%</td>' +
         '<td class="num">'+n+'</td>' +
@@ -1264,6 +1265,7 @@ function supplierDialog(s){
     '<div class="grid g2">' +
       '<div><label>PO code</label><input id="svCode" value="'+esc(s.po_code)+'" maxlength="10"></div>' +
       '<div><label>VAT registration</label><input id="svVat" value="'+esc(s.vat_reg)+'"></div>' +
+      '<div style="grid-column:span 2"><label>Email for orders</label><input id="svMail" type="email" value="'+esc(s.email)+'"></div>' +
       '<div style="grid-column:span 2"><label>Address line 1</label><input id="svA1" value="'+esc(s.address1)+'"></div>' +
       '<div style="grid-column:span 2"><label>Address line 2</label><input id="svA2" value="'+esc(s.address2)+'"></div>' +
       '<div><label>Postcode</label><input id="svPC" value="'+esc(s.postcode)+'"></div>' +
@@ -1274,6 +1276,7 @@ function supplierDialog(s){
   $('#svSave').addEventListener('click', async () => {
     const r = await sb.from('suppliers').update({
       po_code: $('#svCode').value.trim().toUpperCase(), vat_reg: $('#svVat').value.trim(),
+      email: $('#svMail').value.trim().toLowerCase(),
       address1: $('#svA1').value.trim(), address2: $('#svA2').value.trim(),
       postcode: $('#svPC').value.trim()
     }).eq('id', s.id);
@@ -1567,6 +1570,7 @@ function attachOne(po){ pdfTarget = po; $('#pdfPick').value = ''; $('#pdfPick').
 //  leaves the sending to Outlook.
 async function emailPO(po){
   const sup = S.suppliers.find(s => s.id === po.supplier_id) || {};
+  if (!sup.email) return askSupplierEmail(po, sup);
   const { data, error } = await sb.storage.from('purchase-orders').download(po.pdf_path);
   if (error) { alert('Could not fetch the PDF: ' + error.message); return; }
   const a = document.createElement('a');
@@ -1583,10 +1587,38 @@ async function emailPO(po){
   const note = document.createElement('div');
   note.className = 'note';
   note.innerHTML = 'The PDF has been saved as <b>' + esc(po.po_number) + '.pdf</b> in your downloads. ' +
-    'Attach it to the email that has just opened' + (sup.email ? '' : ', and add the supplier\'s address, as none is held for them') + '.' +
+    'Attach it to the email that has just opened.' +
     (po.status === 'Issued' ? ' <button type="button" class="btn sm" id="dSentNow" style="margin-left:.4rem">I\'ve sent it</button>' : '');
   $('#dlgBody').prepend(note);
   const s = $('#dSentNow'); if (s) s.addEventListener('click', () => setStatus(po, 'Sent to supplier'));
+}
+
+//  No address held for the supplier: ask for one, keep it on the supplier
+//  so nobody has to look it up again, then carry on with the email.
+function askSupplierEmail(po, sup){
+  $('#dlgTitle').textContent = 'Email address for ' + (sup.name || 'this supplier');
+  $('#dlgBody').innerHTML =
+    '<p class="muted small">No email address is held for ' + esc(sup.name || 'this supplier') + '. ' +
+    'Enter the one their orders go to. It is saved on the supplier, so it is filled in next time.</p>' +
+    '<label>Email address</label><input id="seMail" type="email" autocomplete="off" placeholder="orders@supplier.co.uk">' +
+    '<div id="seMsg" style="margin-top:.6rem"></div>';
+  $('#dlgFoot').innerHTML = '<button class="btn sec" value="close">Cancel</button>' +
+    '<button type="button" class="btn" id="seGo">Save and write the email</button>';
+  if (!$('#dlg').open) $('#dlg').showModal();
+  const box = $('#seMail'); box.focus();
+  box.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('#seGo').click(); } });
+  $('#seGo').addEventListener('click', async () => {
+    const email = box.value.trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { say($('#seMsg'), 'err', 'That does not look like an email address.'); return; }
+    const b = $('#seGo'); busy(b, true, 'Saving');
+    const { error } = await sb.rpc('set_supplier_email', { p_supplier: sup.id, p_email: email });
+    busy(b, false, 'Save and write the email');
+    if (error) { say($('#seMsg'), 'err', 'Could not save it: ' + error.message); return; }
+    sup.email = email;                       // the copy the page holds
+    $('#dlg').close();
+    await openPO(po.id);
+    await emailPO(po);
+  });
 }
 
 /* ---------- linking an invoice by hand ---------- */
