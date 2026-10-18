@@ -76,7 +76,7 @@ migration runner — the Genus project has no migration tooling.
 | `002_functions.sql` | numbering, the totals trigger, logging, create/issue, the register view |
 | `003_security.sql` | capabilities, row level security, the storage bucket |
 | `004_migrate_from_workbook.sql` | everything that came across from the .xlsm |
-| `005_link_invoices.sql` | **not yet applied.** Keeps invoices linked to their PO from either side, and `link_invoice_po` for the dashboard's Link button |
+| `005_link_invoices.sql` | Applied 18 Oct 2026. Keeps invoices linked to their PO from either side, and `link_invoice_po` for the dashboard's Link button |
 
 ## Importing
 
@@ -102,8 +102,6 @@ mark the order as sent.
 
 ## Still open
 
-- `005_link_invoices.sql` is to be applied. Until it is, the Link button
-  errors and invoices keyed in after 17 Oct do not attach to their PO.
 - The register holds the tracker as at **12 July 2026**. Invoices already quote
   GF-COS-010, GF-ANE-003, GF-LOV-004, GF-PLN-004, GF-VIT-002 and GF-IVF-004, so
   the live workbook is ahead. Import from the current one (Import orders)

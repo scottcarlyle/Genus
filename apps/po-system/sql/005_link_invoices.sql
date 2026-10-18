@@ -1,7 +1,7 @@
 -- ===========================================================
 --  Purchase orders - keep invoices linked to their PO
---  NOT YET APPLIED. Needs Karolina's go-ahead before it touches the
---  live Genus project.
+--  Applied 18 Oct 2026 with Karolina's go-ahead (run statement by statement
+--  through execute_sql, so it is not in the migration history).
 --
 --  004 linked invoices to POs once, at migration. Nothing kept that up:
 --  an invoice keyed in later, or a PO imported after its invoice arrived,
