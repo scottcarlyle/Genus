@@ -338,7 +338,7 @@
 const SB_URL = 'SB_URL_HERE';
 const SB_KEY = 'SB_ANON_KEY';
 //  Bump with every change, so anyone can see which copy they have open.
-const APP_VERSION = '1.9 (18 Oct 2026)';
+const APP_VERSION = '1.10 (18 Oct 2026)';
 const LOGO     = 'LOGO_SRC';
 const LOGO_PDF = 'LOGO_PDF_SRC';
 
@@ -865,6 +865,7 @@ async function openPO(id){
   if (can('po.raise')){
     if (po.status === 'Draft') e.push('<button type="button" class="btn sec" id="dEdit">Edit this draft</button>');
     if (po.status === 'Issued') e.push('<button type="button" class="btn sec" id="dSent">Mark as sent</button>');
+    if (po.status === 'Receipted') e.push('<button type="button" class="btn sec" id="dUnrecv">Undo receipted</button>');
     if (po.status !== 'Draft') e.push('<button type="button" class="btn sec" id="dLinkInv">Link an invoice</button>');
     if (po.status !== 'Draft') e.push('<button type="button" class="btn sec" id="dAttach">'+(po.pdf_path?'Replace the PDF':'Attach a PDF')+'</button>');
   }
@@ -894,6 +895,7 @@ async function openPO(id){
   on('#dEdit',  async () => { $('#dlg').close(); await loadDraft(po, lines||[]); });
   on('#dSent',  () => setStatus(po, 'Sent to supplier'));
   on('#dRecv',  () => receiptPO(po));
+  on('#dUnrecv',() => unreceiptPO(po));
   on('#dCancel',() => { if (confirm('Cancel ' + po.po_number + '? It stays in the register, marked cancelled.')) setStatus(po, 'Cancelled'); });
   on('#dDel',   () => { if (confirm('Delete ' + po.po_number + ' for good? This cannot be undone.')) removePO(po); });
 }
@@ -926,6 +928,19 @@ function receiptPO(po){
     banner('good', po.po_number + ' is now receipted.');
     await linkToPO(S.pos.find(p => p.id === po.id) || po);
   });
+}
+//  Undo receipted: put the order back to open. Which open state it goes
+//  back to is asked, since imported orders were often never marked sent.
+function unreceiptPO(po){
+  $('#dlgTitle').textContent = 'Undo receipted on ' + po.po_number;
+  $('#dlgBody').innerHTML = '<p>' + esc(po.po_number) + ' goes back to being an open order. ' +
+    'Any invoices linked to it stay linked.</p><p class="muted small">Choose what it goes back to.</p>';
+  $('#dlgFoot').innerHTML = '<button type="button" class="btn sec" id="urBack">Back</button>' +
+    '<button type="button" class="btn sec" id="urIssued">Issued</button>' +
+    '<button type="button" class="btn" id="urSent">Sent to supplier</button>';
+  $('#urBack').addEventListener('click', () => { $('#dlg').close(); openPO(po.id); });
+  $('#urIssued').addEventListener('click', () => setStatus(po, 'Issued'));
+  $('#urSent').addEventListener('click', () => setStatus(po, 'Sent to supplier'));
 }
 async function removePO(po){
   if (po.pdf_path) await sb.storage.from('purchase-orders').remove([po.pdf_path]);
