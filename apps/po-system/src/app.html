@@ -133,6 +133,7 @@
     <img src="LOGO_SRC" alt="Genus Medical Fertility">
     <h1>Purchase orders</h1>
     <p class="muted small" style="margin-top:-.3rem">Same sign-in as the invoice system.</p>
+    <p class="muted small appver" style="margin-top:-.4rem"></p>
     <div id="siErr" class="err hide"></div>
     <div style="margin-bottom:.6rem"><label>Email</label><input id="siEmail" type="email" autocomplete="username"></div>
     <div style="margin-bottom:1rem"><label>Password</label><input id="siPass" type="password" autocomplete="current-password"></div>
@@ -144,7 +145,7 @@
 <div id="app" class="hide">
   <header class="top"><div class="topbar">
     <img class="logo" src="LOGO_SRC" alt="Genus Medical Fertility">
-    <div><h1 style="margin:0">Purchase orders</h1></div>
+    <div><h1 style="margin:0">Purchase orders</h1><div class="muted small appver"></div></div>
     <div class="spacer"></div>
     <div class="who"><b id="meName"></b><span id="meCaps"></span></div>
     <button class="btn sec sm" id="btnOut">Sign out</button>
@@ -312,6 +313,8 @@
    ================================================================ */
 const SB_URL = 'SB_URL_HERE';
 const SB_KEY = 'SB_ANON_KEY';
+//  Bump with every change, so anyone can see which copy they have open.
+const APP_VERSION = '1.1 (18 Oct 2026)';
 const LOGO     = 'LOGO_SRC';
 const LOGO_PDF = 'LOGO_PDF_SRC';
 
@@ -351,6 +354,17 @@ const can = c => S.caps.includes(c);
 /* ================================================================
    SIGN IN
    ================================================================ */
+//  Version, and which copy of the file this is - the last two folders of
+//  its path - so an old copy opened from somewhere else is easy to spot.
+(function showVersion(){
+  let where = '';
+  try { where = decodeURIComponent(location.pathname).split('/').filter(Boolean).slice(-3, -1).join(' / '); } catch(e) {}
+  document.querySelectorAll('.appver').forEach(el => {
+    el.textContent = 'Version ' + APP_VERSION + (where ? ' · opened from ' + where : '');
+    el.title = decodeURIComponent(location.pathname);
+  });
+})();
+
 async function boot(){
   const { data:{ session } } = await sb.auth.getSession();
   if (session) { await start(); } else { $('#signin').classList.remove('hide'); }
