@@ -186,6 +186,8 @@
           <option value="">All payments</option>
           <option>Paid</option><option>Part paid</option><option>Awaiting payment</option><option>No invoice yet</option>
         </select>
+        <label class="small" style="display:flex;align-items:center;gap:.35rem;margin:0;text-transform:none;letter-spacing:0;font-weight:600">
+          <input type="checkbox" id="fBuild" style="width:auto"> Show construction phase</label>
         <span class="spacer"></span>
         <span class="muted small" id="regCount"></span>
         <button class="btn sec sm" id="btnImportPOs">Import orders</button>
@@ -322,7 +324,7 @@
 const SB_URL = 'SB_URL_HERE';
 const SB_KEY = 'SB_ANON_KEY';
 //  Bump with every change, so anyone can see which copy they have open.
-const APP_VERSION = '1.6 (18 Oct 2026)';
+const APP_VERSION = '1.7 (18 Oct 2026)';
 const LOGO     = 'LOGO_SRC';
 const LOGO_PDF = 'LOGO_PDF_SRC';
 
@@ -466,6 +468,11 @@ async function refreshAll(){
     sb.from('v_purchase_orders').select('*').order('po_date', { ascending:false }).order('po_number', { ascending:false }),
   ]);
   for (const r of [sup, prod, set, terms, pos]) if (r.error) { banner('err', r.error.message); }
+  //  Which orders date from building the clinic. Read from the table, as the
+  //  register view predates the flag.
+  const build = await sb.from('purchase_orders').select('id, construction').eq('construction', true);
+  const isBuild = new Set((build.data || []).map(r => r.id));
+  (pos.data || []).forEach(p => { p.construction = isBuild.has(p.id); });
   S.suppliers = sup.data || [];
   S.products  = prod.data || [];
   S.settings  = Object.fromEntries((set.data||[]).map(r=>[r.key, r.value]));
@@ -477,12 +484,13 @@ async function refreshAll(){
    DASHBOARD
    ================================================================ */
 async function drawDash(){
-  const live = S.pos.filter(p => p.status !== 'Cancelled');
+  //  Orders from building the clinic are kept, but left out of the running totals.
+  const live = S.pos.filter(p => p.status !== 'Cancelled' && !p.construction);
   const committed = live.reduce((a,p)=>a+Number(p.gross||0), 0);
   const invoiced  = live.reduce((a,p)=>a+Number(p.invoiced||0), 0);
   const paid      = live.reduce((a,p)=>a+Number(p.paid||0), 0);
   const open      = live.filter(p => ['Issued','Sent to supplier'].includes(p.status));
-  const drafts    = S.pos.filter(p => p.status === 'Draft');
+  const drafts    = S.pos.filter(p => p.status === 'Draft' && !p.construction);
 
   $('#dashTiles').innerHTML = [
     tile('Committed', money(committed), live.length + ' orders, cancelled ones left out'),
@@ -588,15 +596,19 @@ function drawRegister(){
   const sup = $('#fSupplier').value;
   const st  = $('#fStatus').value;
   const pay = $('#fPay').value;
-  const rows = S.pos.filter(p =>
+  const build = $('#fBuild').checked;
+  const shown = S.pos.filter(p => build || !p.construction);
+  const rows = shown.filter(p =>
     (!sup || p.supplier_id === sup) &&
     (!st  || p.status === st) &&
     (!pay || (payState(p) || [''])[0] === pay) &&
     (!q   || (p.po_number+' '+p.supplier_name+' '+(p.reference||'')).toLowerCase().includes(q))
   );
   $('#btnImportPOs').classList.toggle('hide', !can('po.raise'));
-  $('#btnAttachPDFs').classList.toggle('hide', !can('po.raise'));  $('#regCount').textContent = rows.length + ' of ' + S.pos.length + ' orders · ' +
-    money(rows.reduce((a,p)=>a+Number(p.gross||0),0));
+  $('#btnAttachPDFs').classList.toggle('hide', !can('po.raise'));  const hidden = S.pos.length - shown.length;
+  $('#regCount').textContent = rows.length + ' of ' + shown.length + ' orders · ' +
+    money(rows.reduce((a,p)=>a+Number(p.gross||0),0)) +
+    (hidden ? ' · ' + hidden + ' from the construction phase hidden' : '');
 
   $('#regTable').innerHTML =
     '<table><thead><tr>' +
@@ -631,7 +643,8 @@ function payPill(p){
 function regRow(p){
   const left = Number(p.gross||0) - Number(p.invoiced||0);
   return '<tr data-po="'+p.id+'" style="cursor:pointer">' +
-    '<td><b>'+esc(p.po_number)+'</b>'+(p.value_source==='imported'?' <span class="muted small">imported</span>':'')+'</td>' +
+    '<td><b>'+esc(p.po_number)+'</b>'+(p.construction?' <span class="muted small">construction</span>'
+      : p.value_source==='imported'?' <span class="muted small">imported</span>':'')+'</td>' +
     '<td>'+uk(p.po_date)+'</td>' +
     '<td>'+esc(p.supplier_name)+'</td>' +
     '<td class="small">'+esc(p.reference||'')+'</td>' +
@@ -798,6 +811,8 @@ async function openPO(id){
       kv('Reference', po.reference || '-') + kv('Needed by', uk(po.needed_by) || '-') +
       kv('Raised by', po.created_by_name || '-') +
     '</div>';
+  if (po.construction) html += '<div class="note">Construction phase: raised while the clinic was being built. ' +
+    'Kept for the record, but left out of the register and the dashboard totals unless "Show construction phase" is ticked.</div>';
   if (po.notes) html += '<div class="note">'+esc(po.notes)+'</div>';
 
   html += (lines||[]).length
@@ -835,6 +850,8 @@ async function openPO(id){
     if (po.status === 'Draft') f.push('<button type="button" class="btn sec" id="dEdit">Edit this draft</button>');
     if (po.status === 'Issued') f.push('<button type="button" class="btn sec" id="dSent">Mark as sent</button>');
     if (['Issued','Sent to supplier'].includes(po.status)) f.push('<button type="button" class="btn sec" id="dRecv">Mark as receipted</button>');
+    f.push('<button type="button" class="btn sec" id="dBuild">' +
+      (po.construction ? 'Move back to current orders' : 'Move to construction phase') + '</button>');
     if (po.status !== 'Cancelled') f.push('<button type="button" class="btn danger" id="dCancel">Cancel this PO</button>');
   }
   if (can('po.delete')) f.push('<button type="button" class="btn danger" id="dDel">Delete</button>');
@@ -846,6 +863,14 @@ async function openPO(id){
   on('#dPdf',   () => openPdf(po));
   on('#dCopy',  () => copyToFolder(po));
   on('#dLinkInv', () => linkToPO(po));
+  on('#dBuild', async () => {
+    const to = !po.construction;
+    const { error } = await sb.from('purchase_orders').update({ construction: to }).eq('id', po.id);
+    if (error) { alert(error.message); return; }
+    await sb.rpc('po_log', { p_action:'po.construction', p_po: po.id, p_detail: { po_number: po.po_number, construction: to } });
+    $('#dlg').close(); await refreshAll(); show(S.view);
+    banner('good', po.po_number + (to ? ' moved to the construction phase.' : ' moved back to current orders.'));
+  });
   on('#dMail',  () => emailPO(po));
   on('#dAttach',() => attachOne(po));
   on('#dEdit',  async () => { $('#dlg').close(); await loadDraft(po, lines||[]); });
@@ -1711,7 +1736,7 @@ function linkDialog(inv){
 }
 
 /* ---------- filters ---------- */
-['fSearch','fSupplier','fStatus','fPay'].forEach(id =>
+['fSearch','fSupplier','fStatus','fPay','fBuild'].forEach(id =>
   $('#'+id).addEventListener('input', drawRegister));
 ['pSearch','pSupplier'].forEach(id =>
   $('#'+id).addEventListener('input', drawPrices));
