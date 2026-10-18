@@ -184,9 +184,7 @@
         <span class="spacer"></span>
         <span class="muted small" id="regCount"></span>
         <button class="btn sec sm" id="btnImportPOs">Import orders</button>
-        <button class="btn sec sm" id="btnAttachPDFs">Attach PDFs</button>
-        <button class="btn sec sm" id="btnAttachFolder" title="Pick a folder - every PDF in it and its sub-folders is matched by PO number">Attach a folder of PDFs</button>
-      </div>
+        <button class="btn sec sm" id="btnAttachPDFs">Attach PDFs</button>      </div>
       <div class="row folder" style="margin:-.3rem 0 .8rem">
         <span id="folderState"></span>
         <button class="btn sec sm" id="btnFolder">Link the PO folder</button>
@@ -301,8 +299,6 @@
   <div class="dlg-f" id="dlgFoot"></div>
 </form></dialog>
 <input type="file" id="pdfPick" accept="application/pdf,.pdf" multiple class="hide">
-<input type="file" id="pdfDirPick" webkitdirectory multiple class="hide">
-
 <script>
 /* ================================================================
    Genus Purchase Orders
@@ -314,7 +310,7 @@
 const SB_URL = 'SB_URL_HERE';
 const SB_KEY = 'SB_ANON_KEY';
 //  Bump with every change, so anyone can see which copy they have open.
-const APP_VERSION = '1.1 (18 Oct 2026)';
+const APP_VERSION = '1.2 (18 Oct 2026)';
 const LOGO     = 'LOGO_SRC';
 const LOGO_PDF = 'LOGO_PDF_SRC';
 
@@ -583,9 +579,7 @@ function drawRegister(){
     (!q   || (p.po_number+' '+p.supplier_name+' '+(p.reference||'')).toLowerCase().includes(q))
   );
   $('#btnImportPOs').classList.toggle('hide', !can('po.raise'));
-  $('#btnAttachPDFs').classList.toggle('hide', !can('po.raise'));
-  $('#btnAttachFolder').classList.toggle('hide', !can('po.raise'));
-  $('#regCount').textContent = rows.length + ' of ' + S.pos.length + ' orders · ' +
+  $('#btnAttachPDFs').classList.toggle('hide', !can('po.raise'));  $('#regCount').textContent = rows.length + ' of ' + S.pos.length + ' orders · ' +
     money(rows.reduce((a,p)=>a+Number(p.gross||0),0));
 
   $('#regTable').innerHTML =
@@ -1496,14 +1490,9 @@ $('#btnPastLines').addEventListener('click', async () => {
 /* ---------- PDFs ---------- */
 //  Files are matched to orders by the PO number in the file name, so
 //  "GF-BOC-002 BOC vessel.pdf" lands on GF-BOC-002.
-//  "Attach a folder of PDFs" takes the whole PO folder, supplier folders
-//  and all; each PDF still has to carry its PO number in its name.
 let pdfTarget = null;
 $('#btnAttachPDFs').addEventListener('click', () => { pdfTarget = null; $('#pdfPick').value = ''; $('#pdfPick').click(); });
-$('#btnAttachFolder').addEventListener('click', () => { pdfTarget = null; $('#pdfDirPick').value = ''; $('#pdfDirPick').click(); });
 $('#pdfPick').addEventListener('change', () => pdfsChosen(Array.from($('#pdfPick').files || [])));
-$('#pdfDirPick').addEventListener('change', () =>
-  pdfsChosen(Array.from($('#pdfDirPick').files || []).filter(f => /\.pdf$/i.test(f.name) && !f.name.startsWith('.'))));
 function pdfsChosen(files){
   if (!files.length) return;
   const seen = new Set();
