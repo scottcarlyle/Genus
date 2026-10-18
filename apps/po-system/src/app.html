@@ -855,44 +855,45 @@ async function openPO(id){
 
   $('#dlgBody').innerHTML = html;
 
+  //  Four buttons: PDF, Receipted, Edit, Close. Everything else that changes
+  //  the order sits behind Edit, so the window stays uncluttered.
   const f = [];
-  if (po.pdf_path) f.push('<button type="button" class="btn sec" id="dPdf">Open the PDF</button>');
-  if (po.pdf_path) f.push('<button type="button" class="btn sec" id="dCopy">' +
-    (FOLDER.handle ? 'Save to the PO folder' : 'Download the PDF') + '</button>');
-  if (po.pdf_path && ['Issued','Sent to supplier'].includes(po.status))
-    f.push('<button type="button" class="btn sec" id="dMail">Email the supplier</button>');
+  if (po.pdf_path) f.push('<button type="button" class="btn sec" id="dPdf">PDF</button>');
+  if (can('po.raise') && ['Issued','Sent to supplier'].includes(po.status))
+    f.push('<button type="button" class="btn" id="dRecv">Receipted</button>');
+  const e = [];
   if (can('po.raise')){
-    if (po.status !== 'Draft') f.push('<button type="button" class="btn sec" id="dLinkInv">Link an invoice</button>');
-    if (po.status !== 'Draft') f.push('<button type="button" class="btn sec" id="dAttach">'+(po.pdf_path?'Replace the PDF':'Attach a PDF')+'</button>');
-    if (po.status === 'Draft') f.push('<button type="button" class="btn sec" id="dEdit">Edit this draft</button>');
-    if (po.status === 'Issued') f.push('<button type="button" class="btn sec" id="dSent">Mark as sent</button>');
-    if (['Issued','Sent to supplier'].includes(po.status)) f.push('<button type="button" class="btn sec" id="dRecv">Mark as receipted</button>');
-    f.push('<button type="button" class="btn sec" id="dBuild">' +
-      (po.construction ? 'Move back to current orders' : 'Move to construction phase') + '</button>');
-    if (po.status !== 'Cancelled') f.push('<button type="button" class="btn danger" id="dCancel">Cancel this PO</button>');
+    if (po.status === 'Draft') e.push('<button type="button" class="btn sec" id="dEdit">Edit this draft</button>');
+    if (po.status === 'Issued') e.push('<button type="button" class="btn sec" id="dSent">Mark as sent</button>');
+    if (po.status !== 'Draft') e.push('<button type="button" class="btn sec" id="dLinkInv">Link an invoice</button>');
+    if (po.status !== 'Draft') e.push('<button type="button" class="btn sec" id="dAttach">'+(po.pdf_path?'Replace the PDF':'Attach a PDF')+'</button>');
   }
-  if (can('po.delete')) f.push('<button type="button" class="btn danger" id="dDel">Delete</button>');
+  if (po.pdf_path && ['Issued','Sent to supplier'].includes(po.status))
+    e.push('<button type="button" class="btn sec" id="dMail">Email the supplier</button>');
+  if (po.pdf_path) e.push('<button type="button" class="btn sec" id="dCopy">' +
+    (FOLDER.handle ? 'Save to the PO folder' : 'Download the PDF') + '</button>');
+  if (can('po.raise') && po.status !== 'Cancelled')
+    e.push('<button type="button" class="btn danger" id="dCancel">Cancel this PO</button>');
+  if (can('po.delete')) e.push('<button type="button" class="btn danger" id="dDel">Delete</button>');
+  if (e.length) f.push('<button type="button" class="btn sec" id="dMore">Edit</button>');
   f.push('<button class="btn sec" value="close">Close</button>');
-  $('#dlgFoot').innerHTML = f.join('');
+  e.push('<button type="button" class="btn sec" id="dBack">Back</button>');
+  $('#dlgFoot').innerHTML = '<div id="dMain" style="display:contents">' + f.join('') + '</div>' +
+    '<div id="dEditRow" class="hide" style="display:contents">' + e.join('') + '</div>';
   $('#dlg').showModal();
 
   const on = (sel, fn) => { const el = $(sel); if (el) el.addEventListener('click', fn); };
+  const editRow = open => { $('#dMain').classList.toggle('hide', open); $('#dEditRow').classList.toggle('hide', !open); };
+  on('#dMore',  () => editRow(true));
+  on('#dBack',  () => editRow(false));
   on('#dPdf',   () => openPdf(po));
   on('#dCopy',  () => copyToFolder(po));
   on('#dLinkInv', () => linkToPO(po));
-  on('#dBuild', async () => {
-    const to = !po.construction;
-    const { error } = await sb.from('purchase_orders').update({ construction: to }).eq('id', po.id);
-    if (error) { alert(error.message); return; }
-    await sb.rpc('po_log', { p_action:'po.construction', p_po: po.id, p_detail: { po_number: po.po_number, construction: to } });
-    $('#dlg').close(); await refreshAll(); show(S.view);
-    banner('good', po.po_number + (to ? ' moved to the construction phase.' : ' moved back to current orders.'));
-  });
   on('#dMail',  () => emailPO(po));
   on('#dAttach',() => attachOne(po));
   on('#dEdit',  async () => { $('#dlg').close(); await loadDraft(po, lines||[]); });
   on('#dSent',  () => setStatus(po, 'Sent to supplier'));
-  on('#dRecv',  () => setStatus(po, 'Receipted'));
+  on('#dRecv',  () => receiptPO(po));
   on('#dCancel',() => { if (confirm('Cancel ' + po.po_number + '? It stays in the register, marked cancelled.')) setStatus(po, 'Cancelled'); });
   on('#dDel',   () => { if (confirm('Delete ' + po.po_number + ' for good? This cannot be undone.')) removePO(po); });
 }
@@ -903,6 +904,28 @@ async function setStatus(po, status){
   if (error) { banner('err', error.message); return; }
   await sb.rpc('po_log', { p_action:'po.status', p_po: po.id, p_detail: { po_number: po.po_number, status } });
   $('#dlg').close(); await refreshAll(); drawRegister(); banner('good', po.po_number + ' is now ' + status.toLowerCase() + '.');
+}
+//  Receipted: the goods are in. Linking the invoice at the same time is
+//  offered, not required - it often arrives later.
+function receiptPO(po){
+  $('#dlgTitle').textContent = 'Mark ' + po.po_number + ' as receipted';
+  $('#dlgBody').innerHTML = '<p>The goods on ' + esc(po.po_number) + ' from ' + esc(po.supplier_name) + ' have arrived.</p>' +
+    '<p class="muted small">If the invoice is already in, you can link it now. You can also link it later from Edit.</p>';
+  $('#dlgFoot').innerHTML = '<button type="button" class="btn sec" id="rcBack">Back</button>' +
+    '<button type="button" class="btn sec" id="rcLink">Receipted and link an invoice</button>' +
+    '<button type="button" class="btn" id="rcGo">Receipted</button>';
+  $('#rcBack').addEventListener('click', () => { $('#dlg').close(); openPO(po.id); });
+  $('#rcGo').addEventListener('click', () => setStatus(po, 'Receipted'));
+  $('#rcLink').addEventListener('click', async () => {
+    const b = $('#rcLink'); busy(b, true, 'Saving');
+    const { error } = await sb.from('purchase_orders').update({ status:'Receipted' }).eq('id', po.id);
+    if (error) { busy(b, false, 'Receipted and link an invoice'); banner('err', error.message); return; }
+    await sb.rpc('po_log', { p_action:'po.status', p_po: po.id, p_detail: { po_number: po.po_number, status:'Receipted' } });
+    po.status = 'Receipted';
+    await refreshAll(); drawRegister();
+    banner('good', po.po_number + ' is now receipted.');
+    await linkToPO(S.pos.find(p => p.id === po.id) || po);
+  });
 }
 async function removePO(po){
   if (po.pdf_path) await sb.storage.from('purchase-orders').remove([po.pdf_path]);
@@ -1107,6 +1130,7 @@ $('#btnIssue').addEventListener('click', async () => {
     resetRaise();
     say($('#raiseMsg'), 'good', po.po_number + ' issued. The PDF is filed against it in the register, and a copy was ' + where + '.');
     window.open(URL.createObjectURL(blob), '_blank');
+    offerEmail(S.pos.find(p => p.id === id) || po, where);
   } finally { busy(b, false, 'Save and issue'); }
 });
 
@@ -1637,14 +1661,18 @@ function attachOne(po){ pdfTarget = po; $('#pdfPick').value = ''; $('#pdfPick').
 //  There is no mail server behind this page, so it does the two fiddly
 //  parts - saving the PDF under its number and writing the email - and
 //  leaves the sending to Outlook.
-async function emailPO(po){
+//  An email link cannot carry an attachment, so the PDF is put somewhere
+//  easy to drag from. `where` says where a copy already went (just after
+//  issuing); without it the PDF is downloaded now.
+async function emailPO(po, where){
   const sup = S.suppliers.find(s => s.id === po.supplier_id) || {};
-  if (!sup.email) return askSupplierEmail(po, sup);
-  const { data, error } = await sb.storage.from('purchase-orders').download(po.pdf_path);
-  if (error) { alert('Could not fetch the PDF: ' + error.message); return; }
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(data); a.download = po.po_number + '.pdf';
-  document.body.appendChild(a); a.click(); a.remove();
+  if (!sup.email) return askSupplierEmail(po, sup, where);
+  if (!where){
+    const { data, error } = await sb.storage.from('purchase-orders').download(po.pdf_path);
+    if (error) { alert('Could not fetch the PDF: ' + error.message); return; }
+    downloadBlob(data, po.po_number + '.pdf');
+    where = 'downloaded to your Downloads folder';
+  }
   const g = k => S.settings[k] || '';
   const body = ['Hello,', '',
     'Please find attached purchase order ' + po.po_number + ' dated ' + uk(po.po_date) + '.', '',
@@ -1655,7 +1683,7 @@ async function emailPO(po){
     '?subject=' + encodeURIComponent('Purchase order ' + po.po_number) + '&body=' + encodeURIComponent(body);
   const note = document.createElement('div');
   note.className = 'note';
-  note.innerHTML = 'The PDF has been saved as <b>' + esc(po.po_number) + '.pdf</b> in your downloads. ' +
+  note.innerHTML = '<b>' + esc(po.po_number) + '.pdf</b> was ' + esc(where) + '. ' +
     'Attach it to the email that has just opened.' +
     (po.status === 'Issued' ? ' <button type="button" class="btn sm" id="dSentNow" style="margin-left:.4rem">I\'ve sent it</button>' : '');
   $('#dlgBody').prepend(note);
@@ -1664,7 +1692,7 @@ async function emailPO(po){
 
 //  No address held for the supplier: ask for one, keep it on the supplier
 //  so nobody has to look it up again, then carry on with the email.
-function askSupplierEmail(po, sup){
+function askSupplierEmail(po, sup, where){
   $('#dlgTitle').textContent = 'Email address for ' + (sup.name || 'this supplier');
   $('#dlgBody').innerHTML =
     '<p class="muted small">No email address is held for ' + esc(sup.name || 'this supplier') + '. ' +
@@ -1686,7 +1714,25 @@ function askSupplierEmail(po, sup){
     sup.email = email;                       // the copy the page holds
     $('#dlg').close();
     await openPO(po.id);
-    await emailPO(po);
+    await emailPO(po, where);
+  });
+}
+
+//  Straight after a PO is issued: offer to write the email to the supplier.
+function offerEmail(po, where){
+  const sup = S.suppliers.find(s => s.id === po.supplier_id) || {};
+  $('#dlgTitle').textContent = po.po_number + ' issued';
+  $('#dlgBody').innerHTML = '<p>Do you want an email to ' + esc(sup.name || po.supplier_name || 'the supplier') +
+    ' written now, with the PO attached?</p>' +
+    '<p class="muted small">Your email program opens with the message filled in. The PDF was ' + esc(where) +
+    ', ready to drag into it.</p>';
+  $('#dlgFoot').innerHTML = '<button class="btn sec" value="close">Not now</button>' +
+    '<button type="button" class="btn" id="oeGo">Write the email</button>';
+  if (!$('#dlg').open) $('#dlg').showModal();
+  $('#oeGo').addEventListener('click', async () => {
+    $('#dlg').close();
+    await openPO(po.id);
+    await emailPO(po, where);
   });
 }
 
