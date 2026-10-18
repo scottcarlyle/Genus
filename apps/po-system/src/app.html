@@ -317,7 +317,7 @@
 const SB_URL = 'SB_URL_HERE';
 const SB_KEY = 'SB_ANON_KEY';
 //  Bump with every change, so anyone can see which copy they have open.
-const APP_VERSION = '1.3 (18 Oct 2026)';
+const APP_VERSION = '1.4 (18 Oct 2026)';
 const LOGO     = 'LOGO_SRC';
 const LOGO_PDF = 'LOGO_PDF_SRC';
 
@@ -651,8 +651,10 @@ const kv_ = (mode, fn) => new Promise((res, rej) => {
   r.onupgradeneeded = () => r.result.createObjectStore('kv');
   r.onerror = () => rej(r.error);
   r.onsuccess = () => {
-    const q = fn(r.result.transaction('kv', mode).objectStore('kv'));
-    q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error);
+    try {
+      const q = fn(r.result.transaction('kv', mode).objectStore('kv'));
+      q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error);
+    } catch(e) { rej(e); }
   };
 });
 async function folderLoad(){
@@ -678,7 +680,23 @@ $('#btnFolder').addEventListener('click', async () => {
     FOLDER.handle = h;
     try { await kv_('readwrite', s => s.put(h, 'poFolder')); } catch(e) { /* remembered for this visit only */ }
     drawFolderState();
-    banner('good', 'Linked to the "' + h.name + '" folder. Pick the PO folder itself, the one holding a folder per supplier.');
+    //  Check it is the right folder: the PO folder holds a folder per
+    //  supplier, each with that supplier's GF-... PDFs in it.
+    let folders = 0, withPOs = 0;
+    const pfx = (S.settings.poPrefix || 'GF').toUpperCase() + '-';
+    try {
+      for await (const [name, d] of h.entries()){
+        if (d.kind !== 'directory' || /^(archive|pdfs to attach)/i.test(name)) continue;
+        folders++;
+        for await (const f of d.keys()) if (f.toUpperCase().startsWith(pfx)) { withPOs++; break; }
+      }
+    } catch(e) { /* the link still stands; the check is only a courtesy */ }
+    if (withPOs)
+      banner('good', 'Linked to the "' + h.name + '" folder. It has ' + withPOs + ' supplier folders with POs in them, ' +
+        'so each new PO will be saved in its supplier\'s folder.');
+    else
+      banner('err', 'Linked to the "' + h.name + '" folder, but there are no supplier folders with POs in it. ' +
+        'If that is not the Finance / PO folder, click Change folder and pick that one.');
   } catch(e) { if (e.name !== 'AbortError') banner('err', 'Could not link the folder: ' + e.message); }
 });
 //  Call at the very start of a click: the browser only asks for permission
