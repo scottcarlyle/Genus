@@ -116,7 +116,16 @@
   th[data-dir]{color:var(--slate)}
   th[data-dir="asc"]::after{content:" \25B2"; font-size:.62rem}
   th[data-dir="desc"]::after{content:" \25BC"; font-size:.62rem}
-  #regTable td:first-child{white-space:nowrap}
+  /* The register has 13 columns: keep it inside its card at laptop widths,
+     and scroll sideways inside the card rather than spill out of it. */
+  #regTable{overflow-x:auto}
+  #regTable table{font-size:.9rem}
+  #regTable th,#regTable td{padding:.45rem .4rem}
+  #regTable th{letter-spacing:.03em}
+  #regTable td:first-child,#regTable td.num{white-space:nowrap}
+  #regTable td:first-child .tag{display:block; font-size:.78rem}
+  #regTable td.ref{min-width:9rem}
+  #regTable .pill{font-size:.72rem; padding:.1rem .45rem}
   .folder{font-size:.84rem; color:var(--muted)}
   .folder b{color:var(--slate)}
   .hide{display:none !important}
@@ -324,7 +333,7 @@
 const SB_URL = 'SB_URL_HERE';
 const SB_KEY = 'SB_ANON_KEY';
 //  Bump with every change, so anyone can see which copy they have open.
-const APP_VERSION = '1.7 (18 Oct 2026)';
+const APP_VERSION = '1.8 (18 Oct 2026)';
 const LOGO     = 'LOGO_SRC';
 const LOGO_PDF = 'LOGO_PDF_SRC';
 
@@ -643,11 +652,11 @@ function payPill(p){
 function regRow(p){
   const left = Number(p.gross||0) - Number(p.invoiced||0);
   return '<tr data-po="'+p.id+'" style="cursor:pointer">' +
-    '<td><b>'+esc(p.po_number)+'</b>'+(p.construction?' <span class="muted small">construction</span>'
-      : p.value_source==='imported'?' <span class="muted small">imported</span>':'')+'</td>' +
+    '<td><b>'+esc(p.po_number)+'</b>'+(p.construction?'<span class="muted tag">construction</span>'
+      : p.value_source==='imported'?'<span class="muted tag">imported</span>':'')+'</td>' +
     '<td>'+uk(p.po_date)+'</td>' +
     '<td>'+esc(p.supplier_name)+'</td>' +
-    '<td class="small">'+esc(p.reference||'')+'</td>' +
+    '<td class="small ref">'+esc(p.reference||'')+'</td>' +
     '<td class="num">'+money(p.net)+'</td>' +
     '<td class="num">'+money(p.vat)+'</td>' +
     '<td class="num"><b>'+money(p.gross)+'</b></td>' +
