@@ -116,6 +116,7 @@
   th[data-dir]{color:var(--slate)}
   th[data-dir="asc"]::after{content:" \25B2"; font-size:.62rem}
   th[data-dir="desc"]::after{content:" \25BC"; font-size:.62rem}
+  #regTable td:first-child{white-space:nowrap}
   .folder{font-size:.84rem; color:var(--muted)}
   .folder b{color:var(--slate)}
   .hide{display:none !important}
@@ -180,6 +181,10 @@
           <option value="">All statuses</option>
           <option>Draft</option><option>Issued</option><option>Sent to supplier</option>
           <option>Receipted</option><option>Cancelled</option>
+        </select>
+        <select id="fPay">
+          <option value="">All payments</option>
+          <option>Paid</option><option>Part paid</option><option>Awaiting payment</option><option>No invoice yet</option>
         </select>
         <span class="spacer"></span>
         <span class="muted small" id="regCount"></span>
@@ -317,7 +322,7 @@
 const SB_URL = 'SB_URL_HERE';
 const SB_KEY = 'SB_ANON_KEY';
 //  Bump with every change, so anyone can see which copy they have open.
-const APP_VERSION = '1.5 (18 Oct 2026)';
+const APP_VERSION = '1.6 (18 Oct 2026)';
 const LOGO     = 'LOGO_SRC';
 const LOGO_PDF = 'LOGO_PDF_SRC';
 
@@ -475,12 +480,14 @@ async function drawDash(){
   const live = S.pos.filter(p => p.status !== 'Cancelled');
   const committed = live.reduce((a,p)=>a+Number(p.gross||0), 0);
   const invoiced  = live.reduce((a,p)=>a+Number(p.invoiced||0), 0);
+  const paid      = live.reduce((a,p)=>a+Number(p.paid||0), 0);
   const open      = live.filter(p => ['Issued','Sent to supplier'].includes(p.status));
   const drafts    = S.pos.filter(p => p.status === 'Draft');
 
   $('#dashTiles').innerHTML = [
     tile('Committed', money(committed), live.length + ' orders, cancelled ones left out'),
     tile('Invoiced against a PO', money(invoiced), pct(invoiced, committed) + ' of what was committed'),
+    tile('Paid', money(paid), money(invoiced - paid) + ' invoiced and not yet paid'),
     tile('Left to invoice', money(committed - invoiced), ''),
     tile('Open orders', open.length, 'issued or sent, not yet receipted'),
     tile('Drafts', drafts.length, drafts.length ? 'not issued to anyone yet' : ''),
@@ -580,9 +587,11 @@ function drawRegister(){
   const q   = $('#fSearch').value.trim().toLowerCase();
   const sup = $('#fSupplier').value;
   const st  = $('#fStatus').value;
+  const pay = $('#fPay').value;
   const rows = S.pos.filter(p =>
     (!sup || p.supplier_id === sup) &&
     (!st  || p.status === st) &&
+    (!pay || (payState(p) || [''])[0] === pay) &&
     (!q   || (p.po_number+' '+p.supplier_name+' '+(p.reference||'')).toLowerCase().includes(q))
   );
   $('#btnImportPOs').classList.toggle('hide', !can('po.raise'));
@@ -591,11 +600,11 @@ function drawRegister(){
 
   $('#regTable').innerHTML =
     '<table><thead><tr>' +
-    ['PO number','Date','Supplier','Reference','Net','VAT','Total','Invoiced','Left','Status',''].map((h,i)=>
-      '<th class="'+([4,5,6,7,8].includes(i)?'num':'')+'">'+h+'</th>').join('') +
+    ['PO number','Date','Supplier','Reference','Net','VAT','Total','Invoiced','Paid','Left','Payment','Status',''].map((h,i)=>
+      '<th class="'+([4,5,6,7,8,9].includes(i)?'num':'')+'">'+h+'</th>').join('') +
     '</tr></thead><tbody>' +
     (rows.length ? rows.map(p => regRow(p)).join('')
-                 : '<tr><td colspan="11" class="muted" style="padding:1.2rem">Nothing matches that.</td></tr>') +
+                 : '<tr><td colspan="13" class="muted" style="padding:1.2rem">Nothing matches that.</td></tr>') +
     '</tbody></table>';
 
   $$('#regTable tr[data-po]').forEach(tr => tr.addEventListener('click', e => {
@@ -604,6 +613,20 @@ function drawRegister(){
   }));
   resort('regTable');
   drawFolderState();
+}
+//  Payment, from the invoices linked to the order: paid means every invoice
+//  received against it so far has been paid, not that the PO is used up.
+function payState(p){
+  if (p.invoiced == null) return null;          // this account cannot see invoice totals
+  const inv = Number(p.invoiced || 0), paid = Number(p.paid || 0);
+  if (inv <= 0) return ['No invoice yet', 'p-draft'];
+  if (paid >= inv - 0.005) return ['Paid', 'p-issued'];
+  if (paid > 0) return ['Part paid', 'p-sent'];
+  return ['Awaiting payment', 'p-receipted'];
+}
+function payPill(p){
+  const s = payState(p);
+  return s ? '<span class="pill '+s[1]+'">'+esc(s[0])+'</span>' : '';
 }
 function regRow(p){
   const left = Number(p.gross||0) - Number(p.invoiced||0);
@@ -616,7 +639,9 @@ function regRow(p){
     '<td class="num">'+money(p.vat)+'</td>' +
     '<td class="num"><b>'+money(p.gross)+'</b></td>' +
     '<td class="num">'+(p.invoiced==null?'-':money(p.invoiced))+'</td>' +
+    '<td class="num">'+(p.paid==null?'-':money(p.paid))+'</td>' +
     '<td class="num">'+(p.invoiced==null?'-':money(left))+'</td>' +
+    '<td>'+payPill(p)+'</td>' +
     '<td>'+statusPill(p.status)+'</td>' +
     '<td class="right">'+(p.pdf_path?'<button class="btn sec sm" data-pdf="'+p.id+'">PDF</button>':'')+'</td>' +
   '</tr>';
@@ -805,6 +830,7 @@ async function openPO(id){
   if (po.pdf_path && ['Issued','Sent to supplier'].includes(po.status))
     f.push('<button type="button" class="btn sec" id="dMail">Email the supplier</button>');
   if (can('po.raise')){
+    if (po.status !== 'Draft') f.push('<button type="button" class="btn sec" id="dLinkInv">Link an invoice</button>');
     if (po.status !== 'Draft') f.push('<button type="button" class="btn sec" id="dAttach">'+(po.pdf_path?'Replace the PDF':'Attach a PDF')+'</button>');
     if (po.status === 'Draft') f.push('<button type="button" class="btn sec" id="dEdit">Edit this draft</button>');
     if (po.status === 'Issued') f.push('<button type="button" class="btn sec" id="dSent">Mark as sent</button>');
@@ -819,6 +845,7 @@ async function openPO(id){
   const on = (sel, fn) => { const el = $(sel); if (el) el.addEventListener('click', fn); };
   on('#dPdf',   () => openPdf(po));
   on('#dCopy',  () => copyToFolder(po));
+  on('#dLinkInv', () => linkToPO(po));
   on('#dMail',  () => emailPO(po));
   on('#dAttach',() => attachOne(po));
   on('#dEdit',  async () => { $('#dlg').close(); await loadDraft(po, lines||[]); });
@@ -1621,6 +1648,48 @@ function askSupplierEmail(po, sup){
   });
 }
 
+/* ---------- linking invoices from the order's side ---------- */
+//  Many invoices arrive without a PO number on them. This lists the
+//  supplier's invoices not yet tied to any order, and marks the likely
+//  ones: the same net value, or dated after the PO.
+async function linkToPO(po){
+  const { data, error } = await sb.from('invoices')
+    .select('id, ref, invoice_no, invoice_date, net, gross, payment_status, po_number')
+    .eq('supplier_id', po.supplier_id).is('po_id', null).order('invoice_date', { ascending:false });
+  if (error) { alert(error.message); return; }
+  const list = (data || []).map(i => ({ ...i,
+    exact: Math.abs(Number(i.net) - Number(po.net)) < 0.005,
+    after: !po.po_date || !i.invoice_date || i.invoice_date >= po.po_date }))
+    .sort((a, b) => (b.exact - a.exact) || (b.after - a.after));
+  $('#dlgTitle').textContent = 'Link an invoice to ' + po.po_number;
+  $('#dlgBody').innerHTML = list.length
+    ? '<p class="muted small">Invoices from ' + esc(po.supplier_name) + ' not linked to any order. ' +
+      'This PO is ' + money(po.net) + ' net, dated ' + uk(po.po_date) + '. Tick the ones that belong to it.</p>' +
+      table(['', 'Invoice', 'Date', 'Net', 'Gross', 'Payment', ''], list.map((i, n) => [
+        '<input type="checkbox" class="li-on" data-i="'+n+'" style="width:auto"'+(i.exact && i.after ? ' checked' : '')+'>',
+        esc(i.invoice_no || i.ref), uk(i.invoice_date),
+        '<span class="num">'+money(i.net)+'</span>', '<span class="num">'+money(i.gross)+'</span>',
+        esc(i.payment_status),
+        i.exact && i.after ? '<span class="pill p-issued">same value</span>'
+          : !i.after ? '<span class="pill p-draft">before the PO</span>' : '']), [,,,'num','num',,])
+    : '<p class="muted">Every invoice from ' + esc(po.supplier_name) + ' is already linked to an order.</p>';
+  $('#dlgFoot').innerHTML = '<button type="button" class="btn sec" id="liBack">Back</button>' +
+    (list.length ? '<button type="button" class="btn" id="liGo">Link the ticked ones</button>' : '');
+  $('#liBack').addEventListener('click', () => { $('#dlg').close(); openPO(po.id); });
+  const go = $('#liGo'); if (!go) return;
+  go.addEventListener('click', async () => {
+    const pick = $$('.li-on').filter(c => c.checked).map(c => list[Number(c.dataset.i)]);
+    if (!pick.length) return;
+    busy(go, true, 'Linking');
+    for (const i of pick){
+      const { error } = await sb.rpc('link_invoice_po', { p_invoice: i.id, p_po: po.id });
+      if (error) { busy(go, false, 'Link the ticked ones'); alert((i.invoice_no || i.ref) + ': ' + error.message); return; }
+    }
+    $('#dlg').close(); await refreshAll(); show(S.view);
+    banner('good', pick.length + (pick.length === 1 ? ' invoice' : ' invoices') + ' linked to ' + po.po_number + '.');
+  });
+}
+
 /* ---------- linking an invoice by hand ---------- */
 function linkDialog(inv){
   const mine = S.pos.filter(p => p.supplier_id === inv.supplier_id);
@@ -1642,7 +1711,7 @@ function linkDialog(inv){
 }
 
 /* ---------- filters ---------- */
-['fSearch','fSupplier','fStatus'].forEach(id =>
+['fSearch','fSupplier','fStatus','fPay'].forEach(id =>
   $('#'+id).addEventListener('input', drawRegister));
 ['pSearch','pSupplier'].forEach(id =>
   $('#'+id).addEventListener('input', drawPrices));

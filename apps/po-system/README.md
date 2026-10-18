@@ -79,6 +79,7 @@ migration runner — the Genus project has no migration tooling.
 | `005_link_invoices.sql` | Applied 18 Oct 2026. Keeps invoices linked to their PO from either side, and `link_invoice_po` for the dashboard's Link button |
 | `006_import_workbook_v6.sql` | Applied 18 Oct 2026. Brings the register level with the last workbook (`Genus_PO_System_6.xlsm`): 27 more orders with their lines, the full price list, and 6 more suppliers with PO codes |
 | `007_supplier_email.sql` | Applied 18 Oct 2026. `set_supplier_email`, so emailing a PO can record a missing supplier address |
+| `008_po_paid.sql` | Applied 18 Oct 2026. `po_paid` and a `paid` column on the register view |
 
 ## Importing
 
