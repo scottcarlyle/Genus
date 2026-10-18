@@ -122,8 +122,13 @@
   #regTable table{font-size:.9rem}
   #regTable th,#regTable td{padding:.45rem .4rem}
   #regTable th{letter-spacing:.03em}
-  #regTable td:first-child,#regTable td.num{white-space:nowrap}
-  #regTable td:first-child .tag{display:block; font-size:.78rem}
+  #regTable td.po,#regTable td.num{white-space:nowrap}
+  #regTable td.po .tag{display:block; font-size:.78rem}
+  #regTable td.pdf{width:1.6rem; padding-right:0}
+  .pdfic{display:inline-flex; align-items:center; justify-content:center; width:1.6rem; height:1.6rem;
+         border:1px solid var(--line); border-radius:6px; background:#fff; color:var(--bad); cursor:pointer; padding:0}
+  .pdfic:hover{background:#fdf1f1; border-color:#f0cccc}
+  .pdfic svg{width:15px; height:15px; display:block}
   #regTable td.ref{min-width:9rem}
   #regTable .pill{font-size:.72rem; padding:.1rem .45rem}
   .folder{font-size:.84rem; color:var(--muted)}
@@ -333,7 +338,7 @@
 const SB_URL = 'SB_URL_HERE';
 const SB_KEY = 'SB_ANON_KEY';
 //  Bump with every change, so anyone can see which copy they have open.
-const APP_VERSION = '1.8 (18 Oct 2026)';
+const APP_VERSION = '1.9 (18 Oct 2026)';
 const LOGO     = 'LOGO_SRC';
 const LOGO_PDF = 'LOGO_PDF_SRC';
 
@@ -621,8 +626,8 @@ function drawRegister(){
 
   $('#regTable').innerHTML =
     '<table><thead><tr>' +
-    ['PO number','Date','Supplier','Reference','Net','VAT','Total','Invoiced','Paid','Left','Payment','Status',''].map((h,i)=>
-      '<th class="'+([4,5,6,7,8,9].includes(i)?'num':'')+'">'+h+'</th>').join('') +
+    ['','PO number','Date','Supplier','Reference','Net','VAT','Total','Invoiced','Paid','Left','Payment','Status'].map((h,i)=>
+      '<th class="'+([5,6,7,8,9,10].includes(i)?'num':'')+'">'+h+'</th>').join('') +
     '</tr></thead><tbody>' +
     (rows.length ? rows.map(p => regRow(p)).join('')
                  : '<tr><td colspan="13" class="muted" style="padding:1.2rem">Nothing matches that.</td></tr>') +
@@ -649,10 +654,14 @@ function payPill(p){
   const s = payState(p);
   return s ? '<span class="pill '+s[1]+'">'+esc(s[0])+'</span>' : '';
 }
+//  A page with a folded corner, in the red PDF readers use.
+const PDF_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+  '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h5"/></svg>';
 function regRow(p){
   const left = Number(p.gross||0) - Number(p.invoiced||0);
   return '<tr data-po="'+p.id+'" style="cursor:pointer">' +
-    '<td><b>'+esc(p.po_number)+'</b>'+(p.construction?'<span class="muted tag">construction</span>'
+    '<td class="pdf">'+(p.pdf_path?'<button class="pdfic" data-pdf="'+p.id+'" title="Open the PDF" aria-label="Open the PDF">'+PDF_ICON+'</button>':'')+'</td>' +
+    '<td class="po"><b>'+esc(p.po_number)+'</b>'+(p.construction?'<span class="muted tag">construction</span>'
       : p.value_source==='imported'?'<span class="muted tag">imported</span>':'')+'</td>' +
     '<td>'+uk(p.po_date)+'</td>' +
     '<td>'+esc(p.supplier_name)+'</td>' +
@@ -665,7 +674,6 @@ function regRow(p){
     '<td class="num">'+(p.invoiced==null?'-':money(left))+'</td>' +
     '<td>'+payPill(p)+'</td>' +
     '<td>'+statusPill(p.status)+'</td>' +
-    '<td class="right">'+(p.pdf_path?'<button class="btn sec sm" data-pdf="'+p.id+'">PDF</button>':'')+'</td>' +
   '</tr>';
 }
 $('#regTable').addEventListener('click', async e => {
