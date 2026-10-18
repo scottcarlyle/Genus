@@ -185,10 +185,6 @@
         <span class="muted small" id="regCount"></span>
         <button class="btn sec sm" id="btnImportPOs">Import orders</button>
         <button class="btn sec sm" id="btnAttachPDFs">Attach PDFs</button>      </div>
-      <div class="row folder" style="margin:-.3rem 0 .8rem">
-        <span id="folderState"></span>
-        <button class="btn sec sm" id="btnFolder">Link the PO folder</button>
-      </div>
       <div class="card" style="padding:.3rem .4rem"><div id="regTable"></div></div>
     </section>
 
@@ -265,8 +261,18 @@
       <div class="card" style="padding:.3rem .4rem"><div id="supTable"></div></div>
     </section>
 
-    <!-- ---------- ADMIN ---------- -->
+    <!-- ---------- SETTINGS ---------- -->
     <section id="v-admin" class="view hide">
+      <div class="card">
+        <h2>PO folder on this computer</h2>
+        <p class="folder" id="folderState" style="margin:.2rem 0 .8rem"></p>
+        <div class="row">
+          <button class="btn sm" id="btnFolder">Link the PO folder</button>
+          <span class="muted small">Pick the OneDrive <b>Finance / PO</b> folder, the one with a folder for each supplier.
+            Each person links it once in their own browser.</span>
+        </div>
+      </div>
+      <div id="admOnly">
       <div class="card">
         <h2>Your company, as it appears on the PO</h2>
         <div class="grid g3" id="admCompany"></div>
@@ -289,6 +295,7 @@
           <button class="btn sm" id="btnSaveTerms">Save terms</button>
         </div>
       </div>
+      </div>
     </section>
   </div>
 </div>
@@ -310,7 +317,7 @@
 const SB_URL = 'SB_URL_HERE';
 const SB_KEY = 'SB_ANON_KEY';
 //  Bump with every change, so anyone can see which copy they have open.
-const APP_VERSION = '1.2 (18 Oct 2026)';
+const APP_VERSION = '1.3 (18 Oct 2026)';
 const LOGO     = 'LOGO_SRC';
 const LOGO_PDF = 'LOGO_PDF_SRC';
 
@@ -421,7 +428,7 @@ const TABS = [
   { id:'raise', label:'Raise a PO',      need:()=>can('po.raise') },
   { id:'price', label:'Price list',      need:()=>true },
   { id:'sup',   label:'Suppliers',       need:()=>true },
-  { id:'admin', label:'Admin',           need:()=>can('admin.settings') },
+  { id:'admin', label:'Settings',        need:()=>can('admin.settings') || can('po.raise') },
 ];
 function buildTabs(){
   $('#tabrow').innerHTML = TABS.filter(t=>t.need())
@@ -655,11 +662,13 @@ async function folderLoad(){
 }
 function drawFolderState(){
   const h = FOLDER.handle;
-  const txt = !FOLDER.supported
+  const txt = where => !FOLDER.supported
     ? 'This browser cannot save into a folder, so issued POs are downloaded instead. Open this page in Chrome or Edge to save them straight into the PO folder.'
     : h ? 'Issued POs are saved to the <b>' + esc(h.name) + '</b> folder, in the supplier\'s folder.'
-        : 'Link the OneDrive PO folder and issued POs are saved there, in the supplier\'s folder. Until then they are downloaded.';
-  ['#folderState', '#folderState2'].forEach(s => { const el = $(s); if (el) el.innerHTML = txt; });
+        : 'No PO folder linked yet, so issued POs are downloaded.' +
+          (where === 'raise' ? ' Link it under Settings and they are saved there, in the supplier\'s folder.' : '');
+  if ($('#folderState'))  $('#folderState').innerHTML  = txt('settings');
+  if ($('#folderState2')) $('#folderState2').innerHTML = txt('raise');
   const b = $('#btnFolder');
   if (b){ b.classList.toggle('hide', !FOLDER.supported || !can('po.raise')); b.textContent = h ? 'Change folder' : 'Link the PO folder'; }
 }
@@ -1267,6 +1276,10 @@ const SET_FIELDS = {
   admNumber:  [['poPrefix','PO prefix']],
 };
 function drawAdmin(){
+  drawFolderState();
+  //  Everyone who raises POs links their own folder; the company details,
+  //  numbering and terms stay with those allowed to change settings.
+  $('#admOnly').classList.toggle('hide', !can('admin.settings'));
   for (const [host, fields] of Object.entries(SET_FIELDS)){
     $('#'+host).innerHTML = fields.map(([k,lab]) =>
       '<div><label>'+esc(lab)+'</label><input data-set="'+k+'" value="'+esc(S.settings[k]||'')+'"></div>').join('');
