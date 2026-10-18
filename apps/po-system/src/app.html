@@ -1,0 +1,1114 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Genus Purchase Orders</title>
+<style>
+  :root{
+    --orange:#FE4009; --orange-dk:#d93506; --slate:#687782; --ink:#2b3338;
+    --muted:#7c888f; --line:#e3e7ea; --bg:#f5f7f8; --card:#ffffff;
+    --ok:#1f9d55; --warn:#d98c00; --soft:#e8705f; --bad:#c62828; --grey:#8a959c;
+    --radius:10px; --shadow:0 1px 2px rgba(43,51,56,.06), 0 4px 16px rgba(43,51,56,.06);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    font:15px/1.5 "Segoe UI",system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink); background:var(--bg);
+  }
+  h1,h2,h3{color:var(--slate); font-weight:600; margin:0 0 .6rem}
+  h1{font-size:1.25rem} h2{font-size:1.05rem} h3{font-size:.95rem}
+  a{color:var(--orange)}
+  button{font:inherit}
+  .btn{
+    border:1px solid transparent; background:var(--orange); color:#fff;
+    padding:.46rem .9rem; border-radius:7px; cursor:pointer; font-weight:600;
+  }
+  .btn:hover{background:var(--orange-dk)}
+  .btn:disabled{background:#c9d0d4; cursor:not-allowed}
+  .btn.sec{background:#fff; color:var(--slate); border-color:var(--line)}
+  .btn.sec:hover{background:#eef1f3}
+  .btn.danger{background:#fff; color:var(--bad); border-color:#f0cccc}
+  .btn.danger:hover{background:#fdf1f1}
+  .btn.sm{padding:.25rem .6rem; font-size:.84rem; font-weight:600}
+  input,select,textarea{
+    font:inherit; color:var(--ink); background:#fff; border:1px solid var(--line);
+    border-radius:7px; padding:.42rem .55rem; width:100%;
+  }
+  input:focus,select:focus,textarea:focus{outline:2px solid rgba(254,64,9,.25); border-color:var(--orange)}
+  input[readonly]{background:#f3f5f6; color:var(--muted)}
+  label{display:block; font-size:.78rem; text-transform:uppercase; letter-spacing:.04em;
+        color:var(--muted); font-weight:600; margin-bottom:.22rem}
+  table{border-collapse:collapse; width:100%}
+  th{
+    text-align:left; font-size:.74rem; text-transform:uppercase; letter-spacing:.05em;
+    color:var(--muted); font-weight:700; padding:.5rem .55rem; border-bottom:1px solid var(--line);
+    white-space:nowrap;
+  }
+  td{padding:.5rem .55rem; border-bottom:1px solid #eef1f2; vertical-align:top}
+  tbody tr:hover{background:#fafbfb}
+  .num{text-align:right; font-variant-numeric:tabular-nums}
+  .card{background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
+        box-shadow:var(--shadow); padding:1rem 1.1rem; margin-bottom:1rem}
+  .wrap{max-width:1240px; margin:0 auto; padding:0 1rem 3rem}
+  header.top{background:#fff; border-bottom:1px solid var(--line)}
+  .topbar{max-width:1240px; margin:0 auto; padding:.7rem 1rem; display:flex;
+          align-items:center; gap:1rem; flex-wrap:wrap}
+  .logo{height:30px; display:block}
+  .spacer{flex:1}
+  .who{font-size:.86rem; color:var(--muted); text-align:right; line-height:1.3}
+  .who b{display:block; color:var(--slate); font-size:.95rem}
+  nav.tabs{background:#fff; border-bottom:1px solid var(--line); position:sticky; top:0; z-index:5}
+  .tabrow{max-width:1240px; margin:0 auto; padding:0 1rem; display:flex; gap:.2rem; overflow-x:auto}
+  .tab{
+    border:none; background:none; padding:.7rem .85rem; cursor:pointer; color:var(--slate);
+    font-weight:600; border-bottom:3px solid transparent; white-space:nowrap;
+  }
+  .tab:hover{color:var(--orange)}
+  .tab.on{color:var(--orange); border-bottom-color:var(--orange)}
+  .tiles{display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:.8rem; margin-bottom:1rem}
+  .tile{background:#fff; border:1px solid var(--line); border-radius:var(--radius);
+        padding:.85rem 1rem; box-shadow:var(--shadow)}
+  .tile .lab{font-size:.74rem; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); font-weight:700}
+  .tile .val{font-size:1.5rem; font-weight:700; color:var(--slate); font-variant-numeric:tabular-nums; margin-top:.2rem}
+  .tile .sub{font-size:.8rem; color:var(--muted)}
+  .pill{display:inline-block; padding:.12rem .5rem; border-radius:999px; font-size:.75rem; font-weight:700; white-space:nowrap}
+  .p-draft{background:#eef1f3; color:var(--grey)}
+  .p-issued{background:#e7f3ec; color:var(--ok)}
+  .p-sent{background:#fdf3e0; color:var(--warn)}
+  .p-receipted{background:#e9eef7; color:#3c5a99}
+  .p-cancelled{background:#fdecea; color:var(--bad)}
+  .grid{display:grid; gap:.8rem}
+  .g2{grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+  .g3{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+  .row{display:flex; gap:.6rem; align-items:center; flex-wrap:wrap}
+  .muted{color:var(--muted)}
+  .small{font-size:.85rem}
+  .right{text-align:right}
+  .note{background:#fdf3e0; border:1px solid #f3dcb0; color:#7a5500;
+        border-radius:8px; padding:.6rem .8rem; font-size:.88rem; margin-bottom:.8rem}
+  .err{background:#fdecea; border:1px solid #f3c6c2; color:#8d2018;
+       border-radius:8px; padding:.6rem .8rem; font-size:.88rem; margin-bottom:.8rem}
+  .good{background:#e7f3ec; border:1px solid #bfe0cc; color:#15603a;
+        border-radius:8px; padding:.6rem .8rem; font-size:.88rem; margin-bottom:.8rem}
+  .signin{max-width:380px; margin:8vh auto; }
+  .signin .card{padding:1.6rem}
+  .signin img{height:38px; margin-bottom:1.2rem}
+  .lines th,.lines td{padding:.35rem .4rem}
+  .lines input,.lines select{padding:.32rem .45rem}
+  .toolbar{display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; margin-bottom:.8rem}
+  .toolbar input,.toolbar select{width:auto; min-width:150px}
+  .detail{background:#fbfcfc}
+  .detail td{border-bottom:1px solid var(--line)}
+  dialog{border:none; border-radius:var(--radius); box-shadow:0 10px 40px rgba(0,0,0,.25);
+         padding:0; max-width:min(680px,94vw); width:100%}
+  dialog::backdrop{background:rgba(43,51,56,.45)}
+  .dlg-h{padding:.9rem 1.1rem; border-bottom:1px solid var(--line); display:flex; align-items:center}
+  .dlg-b{padding:1.1rem; max-height:65vh; overflow:auto}
+  .dlg-f{padding:.8rem 1.1rem; border-top:1px solid var(--line); display:flex; gap:.5rem; justify-content:flex-end}
+  .hide{display:none !important}
+  .spin{display:inline-block;width:14px;height:14px;border:2px solid #fff;border-top-color:transparent;
+        border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  @media (max-width:720px){ .who{display:none} }
+</style>
+</head>
+<body>
+
+<!-- ======================= SIGN IN ======================= -->
+<div id="signin" class="signin hide">
+  <div class="card">
+    <img src="LOGO_SRC" alt="Genus Medical Fertility">
+    <h1>Purchase orders</h1>
+    <p class="muted small" style="margin-top:-.3rem">Same sign-in as the invoice system.</p>
+    <div id="siErr" class="err hide"></div>
+    <div style="margin-bottom:.6rem"><label>Email</label><input id="siEmail" type="email" autocomplete="username"></div>
+    <div style="margin-bottom:1rem"><label>Password</label><input id="siPass" type="password" autocomplete="current-password"></div>
+    <button class="btn" id="siGo" style="width:100%">Sign in</button>
+  </div>
+</div>
+
+<!-- ======================= APP ======================= -->
+<div id="app" class="hide">
+  <header class="top"><div class="topbar">
+    <img class="logo" src="LOGO_SRC" alt="Genus Medical Fertility">
+    <div><h1 style="margin:0">Purchase orders</h1></div>
+    <div class="spacer"></div>
+    <div class="who"><b id="meName"></b><span id="meCaps"></span></div>
+    <button class="btn sec sm" id="btnOut">Sign out</button>
+  </div></header>
+
+  <nav class="tabs"><div class="tabrow" id="tabrow"></div></nav>
+
+  <div class="wrap">
+    <div id="banner"></div>
+
+    <!-- ---------- DASHBOARD ---------- -->
+    <section id="v-dash" class="view hide">
+      <div class="tiles" id="dashTiles"></div>
+      <div class="card">
+        <h2>Nothing invoiced yet</h2>
+        <p class="muted small">Issued orders with no invoice against them.</p>
+        <div id="dashOpen"></div>
+      </div>
+      <div class="card">
+        <h2>Invoices quoting a PO we do not hold</h2>
+        <p class="muted small">The number on the invoice does not match any order in the register.</p>
+        <div id="dashOrphan"></div>
+      </div>
+    </section>
+
+    <!-- ---------- REGISTER ---------- -->
+    <section id="v-reg" class="view hide">
+      <div class="toolbar">
+        <input id="fSearch" placeholder="Search number, supplier, reference">
+        <select id="fSupplier"><option value="">All suppliers</option></select>
+        <select id="fStatus">
+          <option value="">All statuses</option>
+          <option>Draft</option><option>Issued</option><option>Sent to supplier</option>
+          <option>Receipted</option><option>Cancelled</option>
+        </select>
+        <span class="spacer"></span>
+        <span class="muted small" id="regCount"></span>
+      </div>
+      <div class="card" style="padding:.3rem .4rem"><div id="regTable"></div></div>
+    </section>
+
+    <!-- ---------- RAISE ---------- -->
+    <section id="v-raise" class="view hide">
+      <div id="raiseMsg"></div>
+      <div class="card">
+        <div class="row" style="justify-content:space-between">
+          <h2 id="raiseTitle">Raise a purchase order</h2>
+          <span class="pill p-draft" id="raiseNo">number allocated on save</span>
+        </div>
+        <div class="grid g3" style="margin-top:.6rem">
+          <div><label>Supplier</label><select id="rSupplier"></select></div>
+          <div><label>Date</label><input id="rDate" type="date"></div>
+          <div><label>Type</label><input id="rType" list="poTypes" value="Materials">
+            <datalist id="poTypes"><option>Materials</option><option>As per quote</option><option>Services</option></datalist>
+          </div>
+          <div><label>Needed by</label><input id="rNeeded" type="date"></div>
+          <div style="grid-column:span 2"><label>Reference / quote</label><input id="rRef" placeholder="Quote number, job, or what this is for"></div>
+        </div>
+        <div class="grid g2" style="margin-top:.6rem">
+          <div><label>Deliver to</label><textarea id="rDelivery" rows="5"></textarea></div>
+          <div><label>Notes (not printed on the PO)</label><textarea id="rNotes" rows="4"></textarea></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="row" style="justify-content:space-between">
+          <h2>Order lines</h2>
+          <div class="row">
+            <label style="margin:0">VAT</label>
+            <select id="rVat" style="width:auto"><option value="0.20">20%</option><option value="0">Zero / exempt</option><option value="0.05">5%</option></select>
+            <button class="btn sec sm" id="btnAddLine">Add a line</button>
+          </div>
+        </div>
+        <table class="lines"><thead><tr>
+          <th style="width:16%">Item code</th><th>Description</th><th style="width:10%">Unit</th>
+          <th style="width:9%" class="num">Qty</th><th style="width:12%" class="num">Unit price</th>
+          <th style="width:12%" class="num">Total</th><th style="width:34px"></th>
+        </tr></thead><tbody id="rLines"></tbody></table>
+        <datalist id="prodList"></datalist>
+        <div class="row" style="justify-content:flex-end; margin-top:.8rem; gap:2rem">
+          <div class="right"><div class="muted small">Net</div><div class="num" style="font-size:1.1rem;font-weight:700" id="rNet">£0.00</div></div>
+          <div class="right"><div class="muted small">VAT</div><div class="num" style="font-size:1.1rem;font-weight:700" id="rVatAmt">£0.00</div></div>
+          <div class="right"><div class="muted small">Total</div><div class="num" style="font-size:1.3rem;font-weight:700;color:var(--orange)" id="rGross">£0.00</div></div>
+        </div>
+      </div>
+
+      <div class="row" style="justify-content:flex-end">
+        <button class="btn sec" id="btnRaiseReset">Clear</button>
+        <button class="btn sec" id="btnPreview">Preview the PDF</button>
+        <button class="btn sec" id="btnSaveDraft">Save as draft</button>
+        <button class="btn" id="btnIssue">Save and issue</button>
+      </div>
+    </section>
+
+    <!-- ---------- PRICE LIST ---------- -->
+    <section id="v-price" class="view hide">
+      <div class="toolbar">
+        <input id="pSearch" placeholder="Search code or description">
+        <select id="pSupplier"><option value="">All suppliers</option></select>
+        <span class="spacer"></span>
+        <button class="btn sm" id="btnAddProduct">Add a product</button>
+      </div>
+      <div class="card" style="padding:.3rem .4rem"><div id="priceTable"></div></div>
+    </section>
+
+    <!-- ---------- SUPPLIERS ---------- -->
+    <section id="v-sup" class="view hide">
+      <div class="note" id="supNote"></div>
+      <div class="card" style="padding:.3rem .4rem"><div id="supTable"></div></div>
+    </section>
+
+    <!-- ---------- ADMIN ---------- -->
+    <section id="v-admin" class="view hide">
+      <div class="card">
+        <h2>Your company, as it appears on the PO</h2>
+        <div class="grid g3" id="admCompany"></div>
+      </div>
+      <div class="card">
+        <h2>Default delivery details</h2>
+        <div class="grid g3" id="admDelivery"></div>
+      </div>
+      <div class="card">
+        <h2>Numbering</h2>
+        <div class="grid g3" id="admNumber"></div>
+        <p class="muted small">PO numbers are <code>prefix-supplier code-number</code>. The supplier code comes from the supplier record, so change it there.</p>
+      </div>
+      <div class="row" style="justify-content:flex-end"><button class="btn" id="btnSaveSettings">Save settings</button></div>
+      <div class="card">
+        <h2>Terms printed on page two</h2>
+        <div id="admTerms"></div>
+        <div class="row" style="justify-content:flex-end; margin-top:.6rem">
+          <button class="btn sec sm" id="btnAddTerm">Add a clause</button>
+          <button class="btn sm" id="btnSaveTerms">Save terms</button>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<dialog id="dlg"><form method="dialog">
+  <div class="dlg-h"><h2 id="dlgTitle" style="margin:0"></h2></div>
+  <div class="dlg-b" id="dlgBody"></div>
+  <div class="dlg-f" id="dlgFoot"></div>
+</form></dialog>
+
+<script>
+/* ================================================================
+   Genus Purchase Orders
+   One file. All the data lives in the Genus Supabase project, the
+   same one behind the invoice system - same accounts, same suppliers.
+   Copies of this file are harmless; there is nothing in one to get
+   out of step.
+   ================================================================ */
+const SB_URL = 'SB_URL_HERE';
+const SB_KEY = 'SB_ANON_KEY';
+const LOGO     = 'LOGO_SRC';
+const LOGO_PDF = 'LOGO_PDF_SRC';
+
+const sb = supabase.createClient(SB_URL, SB_KEY, {
+  auth: { persistSession: true, autoRefreshToken: true, storageKey: 'genus-po' }
+});
+
+/* ---------- small helpers ---------- */
+const $  = s => document.querySelector(s);
+const $$ = s => Array.from(document.querySelectorAll(s));
+const money = n => '£' + (Number(n)||0).toLocaleString('en-GB',{minimumFractionDigits:2, maximumFractionDigits:2});
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const ymd = d => d ? new Date(d).toISOString().slice(0,10) : '';
+const uk  = d => { if(!d) return ''; const x=new Date(d); return String(x.getDate()).padStart(2,'0')+'/'+String(x.getMonth()+1).padStart(2,'0')+'/'+x.getFullYear(); };
+const today = () => new Date().toISOString().slice(0,10);
+
+function banner(kind, text){
+  $('#banner').innerHTML = text ? '<div class="'+kind+'">'+esc(text)+'</div>' : '';
+  if (text) window.scrollTo({top:0, behavior:'smooth'});
+}
+function say(el, kind, text){
+  el.innerHTML = text ? '<div class="'+kind+'">'+esc(text)+'</div>' : '';
+}
+function busy(btn, on, label){
+  if (on){ btn.dataset.lab = btn.textContent; btn.disabled = true; btn.innerHTML = '<span class="spin"></span> ' + (label||'Working'); }
+  else   { btn.disabled = false; btn.textContent = btn.dataset.lab || label || 'Done'; }
+}
+function statusPill(s){
+  const k = {'Draft':'p-draft','Issued':'p-issued','Sent to supplier':'p-sent','Receipted':'p-receipted','Cancelled':'p-cancelled'}[s]||'p-draft';
+  return '<span class="pill '+k+'">'+esc(s)+'</span>';
+}
+
+/* ---------- state ---------- */
+const S = { me:null, caps:[], suppliers:[], products:[], settings:{}, terms:[], pos:[], editing:null };
+const can = c => S.caps.includes(c);
+
+/* ================================================================
+   SIGN IN
+   ================================================================ */
+async function boot(){
+  const { data:{ session } } = await sb.auth.getSession();
+  if (session) { await start(); } else { $('#signin').classList.remove('hide'); }
+}
+$('#siGo').addEventListener('click', async () => {
+  const b = $('#siGo'); say($('#siErr'),'err','');
+  busy(b, true, 'Signing in');
+  const { error } = await sb.auth.signInWithPassword({ email: $('#siEmail').value.trim(), password: $('#siPass').value });
+  busy(b, false, 'Sign in');
+  if (error) { $('#siErr').classList.remove('hide'); say($('#siErr'),'err', error.message); return; }
+  $('#signin').classList.add('hide');
+  await start();
+});
+$('#siPass').addEventListener('keydown', e => { if (e.key === 'Enter') $('#siGo').click(); });
+$('#btnOut').addEventListener('click', async () => { await sb.auth.signOut(); location.reload(); });
+
+async function start(){
+  const { data:{ user } } = await sb.auth.getUser();
+  const { data: me, error } = await sb.from('profiles').select('full_name, role, caps, active').eq('id', user.id).single();
+  if (error || !me || !me.active){
+    $('#signin').classList.remove('hide');
+    $('#siErr').classList.remove('hide');
+    say($('#siErr'),'err','That account is not active. Ask an admin to switch it back on.');
+    await sb.auth.signOut(); return;
+  }
+  S.me = me;
+  // admins hold everything that is not marked as needing its own tick
+  const { data: allCaps } = await sb.from('capabilities').select('cap');
+  const { data: explicit } = await sb.from('explicit_caps').select('cap');
+  const ex = new Set((explicit||[]).map(r=>r.cap));
+  S.caps = me.role === 'admin'
+    ? Array.from(new Set([...(me.caps||[]), ...(allCaps||[]).map(r=>r.cap).filter(c=>!ex.has(c))]))
+    : (me.caps||[]);
+
+  if (!can('po.view') && !can('po.raise')){
+    $('#signin').classList.remove('hide');
+    $('#siErr').classList.remove('hide');
+    say($('#siErr'),'err','Your account cannot see purchase orders. Ask an admin for the "view" capability under Purchase orders.');
+    await sb.auth.signOut(); return;
+  }
+
+  $('#meName').textContent = me.full_name || '';
+  $('#meCaps').textContent = can('products.edit') ? 'can raise POs and edit the price list'
+                            : can('po.raise') ? 'can raise POs' : 'can view POs';
+  $('#app').classList.remove('hide');
+  buildTabs();
+  await refreshAll();
+  show('dash');
+}
+
+/* ================================================================
+   TABS
+   ================================================================ */
+const TABS = [
+  { id:'dash',  label:'Dashboard',       need:()=>true },
+  { id:'reg',   label:'Purchase orders', need:()=>true },
+  { id:'raise', label:'Raise a PO',      need:()=>can('po.raise') },
+  { id:'price', label:'Price list',      need:()=>true },
+  { id:'sup',   label:'Suppliers',       need:()=>true },
+  { id:'admin', label:'Admin',           need:()=>can('admin.settings') },
+];
+function buildTabs(){
+  $('#tabrow').innerHTML = TABS.filter(t=>t.need())
+    .map(t=>'<button class="tab" data-tab="'+t.id+'">'+t.label+'</button>').join('');
+  $$('#tabrow .tab').forEach(b => b.addEventListener('click', ()=>show(b.dataset.tab)));
+}
+function show(id){
+  $$('.view').forEach(v=>v.classList.add('hide'));
+  $('#v-'+id).classList.remove('hide');
+  $$('#tabrow .tab').forEach(b=>b.classList.toggle('on', b.dataset.tab===id));
+  banner('', '');
+  if (id==='dash')  drawDash();
+  if (id==='reg')   drawRegister();
+  if (id==='raise') drawRaise();
+  if (id==='price') drawPrices();
+  if (id==='sup')   drawSuppliers();
+  if (id==='admin') drawAdmin();
+}
+
+/* ================================================================
+   LOADING
+   ================================================================ */
+async function refreshAll(){
+  const [sup, prod, set, terms, pos] = await Promise.all([
+    sb.from('suppliers').select('id, code, po_code, name, address1, address2, postcode, vat_reg, terms, vat_rate, email, archived').order('name'),
+    sb.from('products').select('*').order('code'),
+    sb.from('settings').select('key, value'),
+    sb.from('po_terms').select('*').order('id'),
+    sb.from('v_purchase_orders').select('*').order('po_date', { ascending:false }).order('po_number', { ascending:false }),
+  ]);
+  for (const r of [sup, prod, set, terms, pos]) if (r.error) { banner('err', r.error.message); }
+  S.suppliers = sup.data || [];
+  S.products  = prod.data || [];
+  S.settings  = Object.fromEntries((set.data||[]).map(r=>[r.key, r.value]));
+  S.terms     = terms.data || [];
+  S.pos       = pos.data || [];
+}
+
+/* ================================================================
+   DASHBOARD
+   ================================================================ */
+async function drawDash(){
+  const live = S.pos.filter(p => p.status !== 'Cancelled');
+  const committed = live.reduce((a,p)=>a+Number(p.gross||0), 0);
+  const invoiced  = live.reduce((a,p)=>a+Number(p.invoiced||0), 0);
+  const open      = live.filter(p => ['Issued','Sent to supplier'].includes(p.status));
+  const drafts    = S.pos.filter(p => p.status === 'Draft');
+
+  $('#dashTiles').innerHTML = [
+    tile('Committed', money(committed), live.length + ' orders, cancelled ones left out'),
+    tile('Invoiced against a PO', money(invoiced), pct(invoiced, committed) + ' of what was committed'),
+    tile('Left to invoice', money(committed - invoiced), ''),
+    tile('Open orders', open.length, 'issued or sent, not yet receipted'),
+    tile('Drafts', drafts.length, drafts.length ? 'not issued to anyone yet' : ''),
+  ].join('');
+
+  const none = live.filter(p => ['Issued','Sent to supplier'].includes(p.status) && Number(p.invoiced||0) === 0);
+  $('#dashOpen').innerHTML = none.length ? table(
+    ['PO','Date','Supplier','Value',''],
+    none.slice(0,25).map(p=>[
+      '<b>'+esc(p.po_number)+'</b>', uk(p.po_date), esc(p.supplier_name),
+      '<span class="num">'+money(p.gross)+'</span>', statusPill(p.status)
+    ]), [,,,'num',])
+    : '<p class="muted small">Every issued order has at least one invoice against it.</p>';
+
+  const { data: orphans } = await sb.from('invoices')
+    .select('ref, invoice_no, po_number, gross, invoice_date, supplier_id')
+    .is('po_id', null).neq('po_number', '').limit(50);
+  const byId = Object.fromEntries(S.suppliers.map(s=>[s.id,s.name]));
+  $('#dashOrphan').innerHTML = (orphans||[]).length ? table(
+    ['Invoice','Date','Supplier','Quoted PO','Value'],
+    orphans.map(i=>[
+      esc(i.invoice_no || i.ref), uk(i.invoice_date), esc(byId[i.supplier_id]||''),
+      '<b>'+esc(i.po_number)+'</b>', '<span class="num">'+money(i.gross)+'</span>'
+    ]), [,,,,'num'])
+    : '<p class="muted small">Nothing unmatched.</p>';
+}
+const tile = (lab, val, sub) =>
+  '<div class="tile"><div class="lab">'+esc(lab)+'</div><div class="val">'+val+'</div><div class="sub">'+esc(sub||'')+'</div></div>';
+const pct = (a,b) => b ? Math.round(a/b*100) + '%' : '-';
+
+function table(heads, rows, cls){
+  cls = cls || [];
+  return '<table><thead><tr>' + heads.map((h,i)=>'<th class="'+(cls[i]||'')+'">'+esc(h)+'</th>').join('') +
+    '</tr></thead><tbody>' + rows.map(r=>'<tr>' + r.map((c,i)=>'<td class="'+(cls[i]||'')+'">'+c+'</td>').join('') + '</tr>').join('') +
+    '</tbody></table>';
+}
+
+/* ================================================================
+   REGISTER
+   ================================================================ */
+function fillSupplierFilters(){
+  const opts = S.suppliers.filter(s=>!s.archived).map(s=>'<option value="'+s.id+'">'+esc(s.name)+'</option>').join('');
+  $('#fSupplier').innerHTML = '<option value="">All suppliers</option>' + opts;
+  $('#pSupplier').innerHTML = '<option value="">All suppliers</option>' + opts;
+}
+function drawRegister(){
+  if (!$('#fSupplier').options.length || $('#fSupplier').options.length === 1) fillSupplierFilters();
+  const q   = $('#fSearch').value.trim().toLowerCase();
+  const sup = $('#fSupplier').value;
+  const st  = $('#fStatus').value;
+  const rows = S.pos.filter(p =>
+    (!sup || p.supplier_id === sup) &&
+    (!st  || p.status === st) &&
+    (!q   || (p.po_number+' '+p.supplier_name+' '+(p.reference||'')).toLowerCase().includes(q))
+  );
+  $('#regCount').textContent = rows.length + ' of ' + S.pos.length + ' orders · ' +
+    money(rows.reduce((a,p)=>a+Number(p.gross||0),0));
+
+  $('#regTable').innerHTML =
+    '<table><thead><tr>' +
+    ['PO number','Date','Supplier','Reference','Net','VAT','Total','Invoiced','Left','Status',''].map((h,i)=>
+      '<th class="'+([4,5,6,7,8].includes(i)?'num':'')+'">'+h+'</th>').join('') +
+    '</tr></thead><tbody>' +
+    (rows.length ? rows.map(p => regRow(p)).join('')
+                 : '<tr><td colspan="11" class="muted" style="padding:1.2rem">Nothing matches that.</td></tr>') +
+    '</tbody></table>';
+
+  $$('#regTable tr[data-po]').forEach(tr => tr.addEventListener('click', e => {
+    if (e.target.closest('button')) return;
+    openPO(tr.dataset.po);
+  }));
+}
+function regRow(p){
+  const left = Number(p.gross||0) - Number(p.invoiced||0);
+  return '<tr data-po="'+p.id+'" style="cursor:pointer">' +
+    '<td><b>'+esc(p.po_number)+'</b>'+(p.value_source==='imported'?' <span class="muted small">imported</span>':'')+'</td>' +
+    '<td>'+uk(p.po_date)+'</td>' +
+    '<td>'+esc(p.supplier_name)+'</td>' +
+    '<td class="small">'+esc(p.reference||'')+'</td>' +
+    '<td class="num">'+money(p.net)+'</td>' +
+    '<td class="num">'+money(p.vat)+'</td>' +
+    '<td class="num"><b>'+money(p.gross)+'</b></td>' +
+    '<td class="num">'+(p.invoiced==null?'-':money(p.invoiced))+'</td>' +
+    '<td class="num">'+(p.invoiced==null?'-':money(left))+'</td>' +
+    '<td>'+statusPill(p.status)+'</td>' +
+    '<td class="right">'+(p.pdf_path?'<button class="btn sec sm" data-pdf="'+p.id+'">PDF</button>':'')+'</td>' +
+  '</tr>';
+}
+$('#regTable').addEventListener('click', async e => {
+  const b = e.target.closest('[data-pdf]'); if (!b) return;
+  e.stopPropagation();
+  const po = S.pos.find(p => p.id === b.dataset.pdf);
+  await openPdf(po);
+});
+async function openPdf(po){
+  if (!po || !po.pdf_path) return;
+  const { data, error } = await sb.storage.from('purchase-orders').createSignedUrl(po.pdf_path, 120);
+  if (error) { banner('err', 'Could not open that PDF: ' + error.message); return; }
+  window.open(data.signedUrl, '_blank');
+}
+
+/* ---------- one PO ---------- */
+async function openPO(id){
+  const po = S.pos.find(p => p.id === id); if (!po) return;
+  const [{ data: lines }, { data: invs }] = await Promise.all([
+    sb.from('po_lines').select('*').eq('po_id', id).order('line'),
+    sb.from('invoices').select('ref, invoice_no, invoice_date, gross, approval_status, payment_status').eq('po_id', id),
+  ]);
+  $('#dlgTitle').innerHTML = esc(po.po_number) + ' &nbsp; ' + statusPill(po.status);
+  let html =
+    '<div class="grid g3" style="margin-bottom:.8rem">' +
+      kv('Supplier', po.supplier_name) + kv('Date', uk(po.po_date)) + kv('Type', po.po_type) +
+      kv('Reference', po.reference || '-') + kv('Needed by', uk(po.needed_by) || '-') +
+      kv('Raised by', po.created_by_name || '-') +
+    '</div>';
+  if (po.notes) html += '<div class="note">'+esc(po.notes)+'</div>';
+
+  html += (lines||[]).length
+    ? table(['#','Item','Description','Unit','Qty','Price','Total'],
+        lines.map(l=>[l.line, esc(l.item_code), esc(l.description), esc(l.unit),
+          l.qty, '<span class="num">'+money(l.unit_price)+'</span>', '<span class="num">'+money(l.line_total)+'</span>']),
+        [,,,, 'num','num','num'])
+    : '<p class="muted small">No line detail. This one came across from the workbook tracker, which only held the total.</p>';
+
+  html += '<div class="row" style="justify-content:flex-end;gap:1.5rem;margin:.8rem 0">' +
+    '<div class="right"><div class="muted small">Net</div><div class="num"><b>'+money(po.net)+'</b></div></div>' +
+    '<div class="right"><div class="muted small">VAT</div><div class="num"><b>'+money(po.vat)+'</b></div></div>' +
+    '<div class="right"><div class="muted small">Total</div><div class="num" style="color:var(--orange)"><b>'+money(po.gross)+'</b></div></div>' +
+  '</div>';
+
+  html += '<h3 style="margin-top:1rem">Invoices against this order</h3>';
+  html += (invs||[]).length
+    ? table(['Invoice','Date','Value','Approval','Payment'],
+        invs.map(i=>[esc(i.invoice_no||i.ref), uk(i.invoice_date),
+          '<span class="num">'+money(i.gross)+'</span>', esc(i.approval_status), esc(i.payment_status)]),
+        [,,'num',,])
+    : '<p class="muted small">None yet.</p>';
+
+  $('#dlgBody').innerHTML = html;
+
+  const f = [];
+  if (po.pdf_path) f.push('<button type="button" class="btn sec" id="dPdf">Open the PDF</button>');
+  if (can('po.raise')){
+    if (po.status === 'Draft') f.push('<button type="button" class="btn sec" id="dEdit">Edit this draft</button>');
+    if (po.status === 'Issued') f.push('<button type="button" class="btn sec" id="dSent">Mark as sent</button>');
+    if (['Issued','Sent to supplier'].includes(po.status)) f.push('<button type="button" class="btn sec" id="dRecv">Mark as receipted</button>');
+    if (po.status !== 'Cancelled') f.push('<button type="button" class="btn danger" id="dCancel">Cancel this PO</button>');
+  }
+  if (can('po.delete')) f.push('<button type="button" class="btn danger" id="dDel">Delete</button>');
+  f.push('<button class="btn sec" value="close">Close</button>');
+  $('#dlgFoot').innerHTML = f.join('');
+  $('#dlg').showModal();
+
+  const on = (sel, fn) => { const el = $(sel); if (el) el.addEventListener('click', fn); };
+  on('#dPdf',   () => openPdf(po));
+  on('#dEdit',  async () => { $('#dlg').close(); await loadDraft(po, lines||[]); });
+  on('#dSent',  () => setStatus(po, 'Sent to supplier'));
+  on('#dRecv',  () => setStatus(po, 'Receipted'));
+  on('#dCancel',() => { if (confirm('Cancel ' + po.po_number + '? It stays in the register, marked cancelled.')) setStatus(po, 'Cancelled'); });
+  on('#dDel',   () => { if (confirm('Delete ' + po.po_number + ' for good? This cannot be undone.')) removePO(po); });
+}
+const kv = (k,v) => '<div><div class="muted small" style="text-transform:uppercase;font-size:.72rem;letter-spacing:.04em;font-weight:700">'+esc(k)+'</div><div>'+esc(v||'')+'</div></div>';
+
+async function setStatus(po, status){
+  const { error } = await sb.from('purchase_orders').update({ status }).eq('id', po.id);
+  if (error) { banner('err', error.message); return; }
+  await sb.rpc('po_log', { p_action:'po.status', p_po: po.id, p_detail: { po_number: po.po_number, status } });
+  $('#dlg').close(); await refreshAll(); drawRegister(); banner('good', po.po_number + ' is now ' + status.toLowerCase() + '.');
+}
+async function removePO(po){
+  if (po.pdf_path) await sb.storage.from('purchase-orders').remove([po.pdf_path]);
+  const { error } = await sb.from('purchase_orders').delete().eq('id', po.id);
+  if (error) { banner('err', error.message); return; }
+  $('#dlg').close(); await refreshAll(); drawRegister(); banner('good', po.po_number + ' deleted.');
+}
+
+/* ================================================================
+   RAISE A PO
+   ================================================================ */
+function drawRaise(){
+  const sel = $('#rSupplier');
+  if (!sel.options.length){
+    const ok  = S.suppliers.filter(s => !s.archived && s.po_code);
+    const bad = S.suppliers.filter(s => !s.archived && !s.po_code);
+    sel.innerHTML = '<option value="">Choose a supplier</option>' +
+      ok.map(s=>'<option value="'+s.id+'">'+esc(s.name)+' ('+esc(s.po_code)+')</option>').join('') +
+      (bad.length ? '<optgroup label="No PO code yet - set one on the Suppliers tab">' +
+        bad.map(s=>'<option value="'+s.id+'" disabled>'+esc(s.name)+'</option>').join('') + '</optgroup>' : '');
+    $('#rDate').value = today();
+    $('#rDelivery').value = deliveryDefault();
+    addLine(); addLine(); addLine();
+  }
+  refreshProdList();
+}
+function deliveryDefault(){
+  const g = k => S.settings[k] || '';
+  return [g('delName'), g('delAddr1'), g('delAddr2'), g('delPostcode'),
+          g('delContact') ? 'FAO ' + g('delContact') : ''].filter(Boolean).join('\n');
+}
+function refreshProdList(){
+  const sid = $('#rSupplier').value;
+  const list = S.products.filter(p => !p.archived && (!sid || p.supplier_id === sid));
+  $('#prodList').innerHTML = list.map(p =>
+    '<option value="'+esc(p.code)+'">'+esc(p.description)+'</option>').join('');
+}
+$('#rSupplier').addEventListener('change', async () => {
+  refreshProdList();
+  const s = S.suppliers.find(x => x.id === $('#rSupplier').value);
+  if (s && s.vat_rate != null) $('#rVat').value = Number(s.vat_rate).toFixed(2);
+  if (!S.editing) await previewNumber();
+});
+async function previewNumber(){
+  const sid = $('#rSupplier').value;
+  if (!sid) { $('#raiseNo').textContent = 'number allocated on save'; return; }
+  const { data, error } = await sb.rpc('next_po_number', { p_supplier: sid });
+  $('#raiseNo').textContent = error ? 'number allocated on save' : data + '  (taken when you save)';
+}
+
+function addLine(l){
+  const tr = document.createElement('tr');
+  tr.innerHTML =
+    '<td><input class="l-code" list="prodList" value="'+esc(l?l.item_code:'')+'"></td>' +
+    '<td><input class="l-desc" value="'+esc(l?l.description:'')+'"></td>' +
+    '<td><input class="l-unit" value="'+esc(l?l.unit:'')+'"></td>' +
+    '<td><input class="l-qty num" type="number" step="any" value="'+(l?l.qty:'')+'"></td>' +
+    '<td><input class="l-price num" type="number" step="0.01" value="'+(l?l.unit_price:'')+'"></td>' +
+    '<td class="num l-total">£0.00</td>' +
+    '<td><button type="button" class="btn sec sm l-del" title="Remove this line">&times;</button></td>';
+  $('#rLines').appendChild(tr);
+  tr.querySelector('.l-code').addEventListener('change', e => {
+    const p = S.products.find(x => x.code.toLowerCase() === e.target.value.trim().toLowerCase());
+    if (p){
+      tr.querySelector('.l-desc').value  = p.description;
+      tr.querySelector('.l-unit').value  = p.unit;
+      tr.querySelector('.l-price').value = p.unit_price;
+      if (!tr.querySelector('.l-qty').value) tr.querySelector('.l-qty').value = 1;
+      totals();
+    }
+  });
+  tr.querySelectorAll('input').forEach(i => i.addEventListener('input', totals));
+  tr.querySelector('.l-del').addEventListener('click', () => { tr.remove(); totals(); });
+  totals();
+}
+$('#btnAddLine').addEventListener('click', () => addLine());
+$('#rVat').addEventListener('change', totals);
+
+function readLines(){
+  return Array.from($('#rLines').children).map(tr => ({
+    item_code:   tr.querySelector('.l-code').value.trim(),
+    description: tr.querySelector('.l-desc').value.trim(),
+    unit:        tr.querySelector('.l-unit').value.trim(),
+    qty:         Number(tr.querySelector('.l-qty').value) || 0,
+    unit_price:  Number(tr.querySelector('.l-price').value) || 0,
+  })).filter(l => l.description || l.item_code);
+}
+function totals(){
+  let net = 0;
+  Array.from($('#rLines').children).forEach(tr => {
+    const t = (Number(tr.querySelector('.l-qty').value)||0) * (Number(tr.querySelector('.l-price').value)||0);
+    tr.querySelector('.l-total').textContent = money(t);
+    net += t;
+  });
+  const rate = Number($('#rVat').value) || 0;
+  const vat = Math.round(net * rate * 100) / 100;
+  $('#rNet').textContent = money(net);
+  $('#rVatAmt').textContent = money(vat);
+  $('#rGross').textContent = money(net + vat);
+  return { net, vat, gross: net + vat, rate };
+}
+
+function resetRaise(){
+  S.editing = null;
+  $('#raiseTitle').textContent = 'Raise a purchase order';
+  $('#raiseNo').textContent = 'number allocated on save';
+  $('#rSupplier').value = ''; $('#rDate').value = today(); $('#rType').value = 'Materials';
+  $('#rRef').value = ''; $('#rNeeded').value = ''; $('#rNotes').value = '';
+  $('#rDelivery').value = deliveryDefault(); $('#rVat').value = '0.20';
+  $('#rLines').innerHTML = ''; addLine(); addLine(); addLine();
+  say($('#raiseMsg'), 'good', '');
+}
+$('#btnRaiseReset').addEventListener('click', resetRaise);
+
+async function loadDraft(po, lines){
+  show('raise');
+  S.editing = po.id;
+  $('#raiseTitle').textContent = 'Editing ' + po.po_number;
+  $('#raiseNo').textContent = po.po_number;
+  $('#rSupplier').value = po.supplier_id; $('#rDate').value = ymd(po.po_date);
+  $('#rType').value = po.po_type; $('#rRef').value = po.reference || '';
+  $('#rNeeded').value = ymd(po.needed_by); $('#rNotes').value = po.notes || '';
+  $('#rDelivery').value = po.delivery_to || deliveryDefault();
+  $('#rVat').value = Number(po.vat_rate).toFixed(2);
+  $('#rLines').innerHTML = '';
+  (lines.length ? lines : [null, null, null]).forEach(l => addLine(l));
+  refreshProdList();
+}
+
+function formValid(){
+  if (!$('#rSupplier').value) return 'Choose a supplier first.';
+  const lines = readLines();
+  if (!lines.length) return 'Add at least one line with a description.';
+  if (lines.some(l => !l.description)) return 'Every line needs a description.';
+  return null;
+}
+function formPayload(){
+  return {
+    p_supplier: $('#rSupplier').value,
+    p_date:     $('#rDate').value || today(),
+    p_type:     $('#rType').value.trim() || 'Materials',
+    p_reference:$('#rRef').value.trim(),
+    p_needed:   $('#rNeeded').value || null,
+    p_delivery: $('#rDelivery').value,
+    p_vat_rate: Number($('#rVat').value) || 0,
+    p_notes:    $('#rNotes').value.trim(),
+  };
+}
+async function saveDraft(){
+  const bad = formValid(); if (bad) { say($('#raiseMsg'),'err',bad); return null; }
+  const p = formPayload();
+  let id = S.editing;
+  if (id){
+    const { error } = await sb.from('purchase_orders').update({
+      supplier_id:p.p_supplier, po_date:p.p_date, po_type:p.p_type, reference:p.p_reference,
+      needed_by:p.p_needed, delivery_to:p.p_delivery, vat_rate:p.p_vat_rate, notes:p.p_notes
+    }).eq('id', id);
+    if (error) { say($('#raiseMsg'),'err',error.message); return null; }
+  } else {
+    const { data, error } = await sb.rpc('create_po', p);
+    if (error) { say($('#raiseMsg'),'err',error.message); return null; }
+    id = data; S.editing = id;
+  }
+  // replace the lines
+  const del = await sb.from('po_lines').delete().eq('po_id', id);
+  if (del.error) { say($('#raiseMsg'),'err',del.error.message); return null; }
+  const lines = readLines().map((l,i) => ({ ...l, po_id:id, line:i+1 }));
+  const ins = await sb.from('po_lines').insert(lines);
+  if (ins.error) { say($('#raiseMsg'),'err',ins.error.message); return null; }
+  return id;
+}
+$('#btnSaveDraft').addEventListener('click', async () => {
+  const b = $('#btnSaveDraft'); busy(b, true, 'Saving');
+  const id = await saveDraft();
+  busy(b, false, 'Save as draft');
+  if (!id) return;
+  await refreshAll();
+  const po = S.pos.find(p => p.id === id);
+  $('#raiseTitle').textContent = 'Editing ' + po.po_number;
+  $('#raiseNo').textContent = po.po_number;
+  say($('#raiseMsg'), 'good', po.po_number + ' saved as a draft. It has a number now, so it is reserved.');
+});
+
+$('#btnIssue').addEventListener('click', async () => {
+  const b = $('#btnIssue'); busy(b, true, 'Issuing');
+  try{
+    const id = await saveDraft();
+    if (!id) return;
+    await refreshAll();
+    const po = S.pos.find(p => p.id === id);
+    const { data: lines } = await sb.from('po_lines').select('*').eq('po_id', id).order('line');
+    const blob = buildPdf(po, lines || []).output('blob');
+    const path = po.po_number + '.pdf';
+    const up = await sb.storage.from('purchase-orders').upload(path, blob, { upsert:true, contentType:'application/pdf' });
+    if (up.error) { say($('#raiseMsg'),'err','Saved, but the PDF would not file: ' + up.error.message); return; }
+    const { error } = await sb.rpc('issue_po', { p_id:id, p_pdf_path:path });
+    if (error) { say($('#raiseMsg'),'err',error.message); return; }
+    await refreshAll();
+    resetRaise();
+    say($('#raiseMsg'), 'good', po.po_number + ' issued. The PDF is filed against it in the register.');
+    window.open(URL.createObjectURL(blob), '_blank');
+  } finally { busy(b, false, 'Save and issue'); }
+});
+
+$('#btnPreview').addEventListener('click', () => {
+  const bad = formValid(); if (bad) { say($('#raiseMsg'),'err',bad); return; }
+  const s = S.suppliers.find(x => x.id === $('#rSupplier').value);
+  const t = totals();
+  const fake = {
+    po_number: S.editing ? $('#raiseNo').textContent : ($('#raiseNo').textContent.split(' ')[0] || 'DRAFT'),
+    supplier_id: s.id, supplier_name: s.name, po_date: $('#rDate').value, po_type: $('#rType').value,
+    reference: $('#rRef').value, needed_by: $('#rNeeded').value, delivery_to: $('#rDelivery').value,
+    net: t.net, vat: t.vat, gross: t.gross, created_by_name: S.me.full_name,
+  };
+  const lines = readLines().map((l,i)=>({ ...l, line:i+1, line_total: l.qty * l.unit_price }));
+  window.open(URL.createObjectURL(buildPdf(fake, lines).output('blob')), '_blank');
+});
+
+/* ================================================================
+   THE PDF
+   ================================================================ */
+function buildPdf(po, lines){
+  const { jsPDF } = window.jspdf;
+  const d = new jsPDF({ unit:'mm', format:'a4' });
+  const W = 210, M = 15;
+  const g = k => S.settings[k] || '';
+  const sup = S.suppliers.find(s => s.id === po.supplier_id) || {};
+  const SLATE = [104,119,130], ORANGE = [254,64,9], INK = [43,51,56];
+
+  d.addImage(LOGO_PDF, 'JPEG', M, 12, 52, 11);
+  d.setFont('helvetica','bold'); d.setFontSize(17); d.setTextColor(...SLATE);
+  d.text('PURCHASE ORDER', W - M, 18, { align:'right' });
+  d.setFontSize(11); d.setTextColor(...ORANGE);
+  d.text(po.po_number, W - M, 25, { align:'right' });
+  d.setFont('helvetica','normal'); d.setFontSize(9); d.setTextColor(...INK);
+  d.text(uk(po.po_date), W - M, 30.5, { align:'right' });
+
+  d.setDrawColor(224,228,231); d.line(M, 35, W - M, 35);
+
+  //  Each block gets its own width so a long company name wraps inside its
+  //  column instead of running across the one next to it.
+  const block = (x, y, w, title, lines2) => {
+    d.setFont('helvetica','bold'); d.setFontSize(7.5); d.setTextColor(...SLATE);
+    d.text(title.toUpperCase(), x, y);
+    d.setFont('helvetica','normal'); d.setFontSize(9); d.setTextColor(...INK);
+    let yy = y + 4.5;
+    lines2.filter(Boolean).forEach(t => {
+      d.splitTextToSize(String(t), w).forEach(part => { d.text(part, x, yy); yy += 4.2; });
+    });
+    return yy;
+  };
+  const y1 = block(M, 42, 62, 'From', [g('coName'), g('coAddr1'), g('coAddr2'), g('coPostcode'),
+                                       g('coCompanyNo') ? 'Company no ' + g('coCompanyNo') : '']);
+  const y2 = block(82, 42, 55, 'To', [sup.name, sup.address1, sup.address2, sup.postcode]);
+  const y3 = block(142, 42, 53, 'Deliver to', String(po.delivery_to || '').split('\n'));
+  let y = Math.max(y1, y2, y3) + 4;
+
+  d.setDrawColor(224,228,231); d.line(M, y, W - M, y); y += 5;
+  d.setFont('helvetica','bold'); d.setFontSize(7.5); d.setTextColor(...SLATE);
+  d.text('TYPE', M, y); d.text('REFERENCE', 50, y); d.text('NEEDED BY', 160, y);
+  d.setFont('helvetica','normal'); d.setFontSize(9); d.setTextColor(...INK);
+  d.text(String(po.po_type||''), M, y + 4.5);
+  d.text(d.splitTextToSize(String(po.reference||'-'), 104)[0], 50, y + 4.5);
+  d.text(po.needed_by ? uk(po.needed_by) : '-', 160, y + 4.5);
+  y += 10;
+
+  d.autoTable({
+    startY: y, margin: { left:M, right:M },
+    head: [['Item code','Description','Unit','Qty','Unit price','Total']],
+    body: lines.map(l => [l.item_code||'', l.description||'', l.unit||'',
+                          String(l.qty ?? ''), money(l.unit_price), money(l.line_total ?? (l.qty*l.unit_price))]),
+    styles: { font:'helvetica', fontSize:8.5, cellPadding:2, textColor:INK, lineColor:[230,234,237], lineWidth:.1 },
+    headStyles: { fillColor:SLATE, textColor:[255,255,255], fontStyle:'bold', fontSize:7.5 },
+    alternateRowStyles: { fillColor:[250,251,251] },
+    columnStyles: { 0:{cellWidth:26}, 2:{cellWidth:18}, 3:{cellWidth:14, halign:'right'},
+                    4:{cellWidth:24, halign:'right'}, 5:{cellWidth:26, halign:'right'} },
+  });
+
+  let ty = d.lastAutoTable.finalY + 6;
+  const rowT = (lab, val, bold) => {
+    d.setFont('helvetica', bold ? 'bold' : 'normal'); d.setFontSize(bold ? 11 : 9.5);
+    d.setTextColor(...(bold ? ORANGE : INK));
+    d.text(lab, 150, ty, { align:'right' }); d.text(val, W - M, ty, { align:'right' });
+    ty += bold ? 7 : 5.2;
+  };
+  rowT('Net', money(po.net));
+  rowT('VAT', money(po.vat));
+  rowT('Total', money(po.gross), true);
+
+  d.setFont('helvetica','bold'); d.setFontSize(8.5); d.setTextColor(...SLATE);
+  d.text('Quote ' + po.po_number + ' on every invoice, delivery note and email about this order.', M, ty + 2);
+  d.setFont('helvetica','normal'); d.setFontSize(8); d.setTextColor(...INK);
+  d.text('Invoices to ' + g('coInvoiceEmail') + '   ·   ' + g('coPhone'), M, ty + 7);
+  if (po.created_by_name) d.text('Raised by ' + po.created_by_name, M, ty + 11.5);
+
+  const terms = S.terms.filter(t => t.active);
+  if (terms.length){
+    d.addPage();
+    d.addImage(LOGO_PDF, 'JPEG', M, 12, 52, 11);
+    d.setFont('helvetica','bold'); d.setFontSize(12); d.setTextColor(...SLATE);
+    d.text('Purchase order terms and conditions', W - M, 20, { align:'right' });
+    d.setFontSize(8.5); d.setTextColor(...INK);
+    d.autoTable({
+      startY: 32, margin:{ left:M, right:M },
+      body: terms.map(t => [String(t.id), t.section, t.terms]),
+      styles:{ font:'helvetica', fontSize:7.6, cellPadding:2.2, textColor:INK, lineColor:[235,238,240], lineWidth:.1, valign:'top' },
+      columnStyles:{ 0:{cellWidth:8, fontStyle:'bold'}, 1:{cellWidth:38, fontStyle:'bold', textColor:SLATE} },
+      alternateRowStyles:{ fillColor:[250,251,251] },
+    });
+  }
+
+  const n = d.getNumberOfPages();
+  for (let i = 1; i <= n; i++){
+    d.setPage(i); d.setFont('helvetica','normal'); d.setFontSize(7.5); d.setTextColor(150,158,163);
+    d.text(g('coName'), M, 288);
+    d.text('Page ' + i + ' of ' + n, W - M, 288, { align:'right' });
+  }
+  return d;
+}
+
+/* ================================================================
+   PRICE LIST
+   ================================================================ */
+function drawPrices(){
+  if ($('#pSupplier').options.length <= 1) fillSupplierFilters();
+  const q = $('#pSearch').value.trim().toLowerCase();
+  const sid = $('#pSupplier').value;
+  const byId = Object.fromEntries(S.suppliers.map(s=>[s.id, s.name]));
+  const rows = S.products.filter(p =>
+    (!sid || p.supplier_id === sid) &&
+    (!q || (p.code + ' ' + p.description).toLowerCase().includes(q)));
+  $('#btnAddProduct').classList.toggle('hide', !can('products.edit'));
+  $('#priceTable').innerHTML =
+    '<table><thead><tr><th>Code</th><th>Supplier</th><th>Description</th><th>Unit</th>' +
+    '<th class="num">Unit price</th><th></th></tr></thead><tbody>' +
+    (rows.length ? rows.map(p =>
+      '<tr><td><b>'+esc(p.code)+'</b></td><td>'+esc(byId[p.supplier_id]||'')+'</td>' +
+      '<td>'+esc(p.description)+'</td><td>'+esc(p.unit)+'</td>' +
+      '<td class="num">'+money(p.unit_price)+'</td>' +
+      '<td class="right">'+(can('products.edit')
+        ? '<button class="btn sec sm" data-edit="'+p.id+'">Edit</button>' : '')+'</td></tr>').join('')
+      : '<tr><td colspan="6" class="muted" style="padding:1.2rem">Nothing here yet.</td></tr>') +
+    '</tbody></table>';
+  $$('#priceTable [data-edit]').forEach(b =>
+    b.addEventListener('click', () => productDialog(S.products.find(p => p.id === b.dataset.edit))));
+}
+$('#btnAddProduct').addEventListener('click', () => productDialog(null));
+
+function productDialog(p){
+  const opts = S.suppliers.filter(s=>!s.archived)
+    .map(s=>'<option value="'+s.id+'"'+(p && p.supplier_id===s.id?' selected':'')+'>'+esc(s.name)+'</option>').join('');
+  $('#dlgTitle').textContent = p ? 'Edit ' + p.code : 'Add a product';
+  $('#dlgBody').innerHTML =
+    '<div class="grid g2">' +
+      '<div><label>Item code</label><input id="pcCode" value="'+esc(p?p.code:'')+'"></div>' +
+      '<div><label>Supplier</label><select id="pcSup">'+opts+'</select></div>' +
+      '<div style="grid-column:span 2"><label>Description</label><input id="pcDesc" value="'+esc(p?p.description:'')+'"></div>' +
+      '<div><label>Unit</label><input id="pcUnit" value="'+esc(p?p.unit:'each')+'"></div>' +
+      '<div><label>Unit price (£)</label><input id="pcPrice" type="number" step="0.01" value="'+(p?p.unit_price:'')+'"></div>' +
+    '</div>';
+  $('#dlgFoot').innerHTML =
+    (p ? '<button type="button" class="btn danger" id="pcDel">Delete</button>' : '') +
+    '<button class="btn sec" value="close">Cancel</button>' +
+    '<button type="button" class="btn" id="pcSave">Save</button>';
+  $('#dlg').showModal();
+  $('#pcSave').addEventListener('click', async () => {
+    const row = { code: $('#pcCode').value.trim(), supplier_id: $('#pcSup').value,
+                  description: $('#pcDesc').value.trim(), unit: $('#pcUnit').value.trim(),
+                  unit_price: Number($('#pcPrice').value) || 0 };
+    if (!row.code) { alert('A product needs a code.'); return; }
+    const r = p ? await sb.from('products').update(row).eq('id', p.id)
+                : await sb.from('products').insert(row);
+    if (r.error) { alert(r.error.message); return; }
+    $('#dlg').close(); await refreshAll(); drawPrices();
+  });
+  const del = $('#pcDel');
+  if (del) del.addEventListener('click', async () => {
+    if (!confirm('Delete ' + p.code + ' from the price list?')) return;
+    const r = await sb.from('products').delete().eq('id', p.id);
+    if (r.error) { alert(r.error.message); return; }
+    $('#dlg').close(); await refreshAll(); drawPrices();
+  });
+}
+
+/* ================================================================
+   SUPPLIERS
+   ================================================================ */
+function drawSuppliers(){
+  const noCode = S.suppliers.filter(s => !s.archived && !s.po_code);
+  const one = noCode.length === 1;
+  $('#supNote').innerHTML = noCode.length
+    ? '<b>' + noCode.length + (one ? ' supplier has' : ' suppliers have') + ' no PO code</b>, so no PO can be ' +
+      'raised against ' + (one ? 'it' : 'them') + ' yet. A PO code is the short bit in the middle of the ' +
+      'number, as in GF-<b>BOC</b>-001.'
+    : 'Every active supplier has a PO code.';
+  $('#supNote').classList.toggle('hide', !noCode.length);
+
+  const rows = S.suppliers.filter(s => !s.archived);
+  $('#supTable').innerHTML =
+    '<table><thead><tr><th>Supplier</th><th>Ledger code</th><th>PO code</th><th>Address</th>' +
+    '<th class="num">Terms</th><th class="num">VAT</th><th class="num">POs</th><th></th></tr></thead><tbody>' +
+    rows.map(s => {
+      const n = S.pos.filter(p => p.supplier_id === s.id).length;
+      return '<tr><td><b>'+esc(s.name)+'</b></td><td>'+esc(s.code)+'</td>' +
+        '<td>'+(s.po_code ? '<b>'+esc(s.po_code)+'</b>' : '<span class="pill p-cancelled">not set</span>')+'</td>' +
+        '<td class="small">'+esc([s.address1, s.address2, s.postcode].filter(Boolean).join(', '))+'</td>' +
+        '<td class="num">'+esc(s.terms)+' days</td>' +
+        '<td class="num">'+Math.round(Number(s.vat_rate)*100)+'%</td>' +
+        '<td class="num">'+n+'</td>' +
+        '<td class="right">'+(can('suppliers.edit')
+          ? '<button class="btn sec sm" data-sup="'+s.id+'">Edit</button>' : '')+'</td></tr>';
+    }).join('') + '</tbody></table>';
+  $$('#supTable [data-sup]').forEach(b =>
+    b.addEventListener('click', () => supplierDialog(S.suppliers.find(s => s.id === b.dataset.sup))));
+}
+function supplierDialog(s){
+  $('#dlgTitle').textContent = s.name;
+  $('#dlgBody').innerHTML =
+    '<p class="muted small">The ledger code and the name belong to the invoice system - change those there. ' +
+    'What matters here is the PO code and the address printed on the order.</p>' +
+    '<div class="grid g2">' +
+      '<div><label>PO code</label><input id="svCode" value="'+esc(s.po_code)+'" maxlength="10"></div>' +
+      '<div><label>VAT registration</label><input id="svVat" value="'+esc(s.vat_reg)+'"></div>' +
+      '<div style="grid-column:span 2"><label>Address line 1</label><input id="svA1" value="'+esc(s.address1)+'"></div>' +
+      '<div style="grid-column:span 2"><label>Address line 2</label><input id="svA2" value="'+esc(s.address2)+'"></div>' +
+      '<div><label>Postcode</label><input id="svPC" value="'+esc(s.postcode)+'"></div>' +
+    '</div>';
+  $('#dlgFoot').innerHTML = '<button class="btn sec" value="close">Cancel</button>' +
+    '<button type="button" class="btn" id="svSave">Save</button>';
+  $('#dlg').showModal();
+  $('#svSave').addEventListener('click', async () => {
+    const r = await sb.from('suppliers').update({
+      po_code: $('#svCode').value.trim().toUpperCase(), vat_reg: $('#svVat').value.trim(),
+      address1: $('#svA1').value.trim(), address2: $('#svA2').value.trim(),
+      postcode: $('#svPC').value.trim()
+    }).eq('id', s.id);
+    if (r.error) { alert(r.error.message); return; }
+    $('#dlg').close(); await refreshAll(); drawSuppliers();
+  });
+}
+
+/* ================================================================
+   ADMIN
+   ================================================================ */
+const SET_FIELDS = {
+  admCompany: [['coName','Company name'],['coAddr1','Address line 1'],['coAddr2','Address line 2'],
+               ['coPostcode','Postcode'],['coCompanyNo','Company number'],['coVatNo','VAT number'],
+               ['coPhone','Phone'],['coInvoiceEmail','Where invoices should be sent']],
+  admDelivery:[['delName','Company name'],['delAddr1','Address line 1'],['delAddr2','Address line 2'],
+               ['delPostcode','Postcode'],['delContact','Contact'],['delEmail','Email'],['delPhone','Phone']],
+  admNumber:  [['poPrefix','PO prefix']],
+};
+function drawAdmin(){
+  for (const [host, fields] of Object.entries(SET_FIELDS)){
+    $('#'+host).innerHTML = fields.map(([k,lab]) =>
+      '<div><label>'+esc(lab)+'</label><input data-set="'+k+'" value="'+esc(S.settings[k]||'')+'"></div>').join('');
+  }
+  drawTerms();
+}
+function drawTerms(){
+  $('#admTerms').innerHTML = S.terms.map(t =>
+    '<div class="grid" style="grid-template-columns:40px 200px 1fr 70px; gap:.5rem; margin-bottom:.4rem" data-term="'+t.id+'">' +
+      '<input class="t-id num" value="'+t.id+'" type="number">' +
+      '<input class="t-sec" value="'+esc(t.section)+'">' +
+      '<textarea class="t-txt" rows="2">'+esc(t.terms)+'</textarea>' +
+      '<label class="small" style="text-transform:none;display:flex;align-items:center;gap:.3rem">' +
+      '<input type="checkbox" class="t-on" style="width:auto"'+(t.active?' checked':'')+'> on</label>' +
+    '</div>').join('');
+}
+$('#btnAddTerm').addEventListener('click', () => {
+  const next = Math.max(0, ...S.terms.map(t=>t.id)) + 1;
+  S.terms.push({ id: next, section:'', terms:'', active:true }); drawTerms();
+});
+$('#btnSaveSettings').addEventListener('click', async () => {
+  const b = $('#btnSaveSettings'); busy(b, true, 'Saving');
+  const rows = $$('[data-set]').map(i => ({ key: i.dataset.set, value: i.value }));
+  const { error } = await sb.from('settings').upsert(rows, { onConflict:'key' });
+  busy(b, false, 'Save settings');
+  if (error) { banner('err', error.message); return; }
+  await refreshAll(); banner('good','Settings saved.');
+});
+$('#btnSaveTerms').addEventListener('click', async () => {
+  const b = $('#btnSaveTerms'); busy(b, true, 'Saving');
+  const rows = $$('#admTerms [data-term]').map(d => ({
+    id: Number(d.querySelector('.t-id').value),
+    section: d.querySelector('.t-sec').value.trim(),
+    terms: d.querySelector('.t-txt').value.trim(),
+    active: d.querySelector('.t-on').checked,
+  })).filter(r => r.id && (r.section || r.terms));
+  const { error } = await sb.from('po_terms').upsert(rows, { onConflict:'id' });
+  busy(b, false, 'Save terms');
+  if (error) { banner('err', error.message); return; }
+  await refreshAll(); drawTerms(); banner('good','Terms saved. They print on page two of every new PO.');
+});
+
+/* ---------- filters ---------- */
+['fSearch','fSupplier','fStatus'].forEach(id =>
+  $('#'+id).addEventListener('input', drawRegister));
+['pSearch','pSupplier'].forEach(id =>
+  $('#'+id).addEventListener('input', drawPrices));
+
+boot();
+</script>
+</body>
+</html>
