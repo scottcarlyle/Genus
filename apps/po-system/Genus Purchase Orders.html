@@ -171,6 +171,8 @@
         </select>
         <span class="spacer"></span>
         <span class="muted small" id="regCount"></span>
+        <button class="btn sec sm" id="btnImportPOs">Import orders</button>
+        <button class="btn sec sm" id="btnAttachPDFs">Attach PDFs</button>
       </div>
       <div class="card" style="padding:.3rem .4rem"><div id="regTable"></div></div>
     </section>
@@ -234,6 +236,8 @@
         <input id="pSearch" placeholder="Search code or description">
         <select id="pSupplier"><option value="">All suppliers</option></select>
         <span class="spacer"></span>
+        <button class="btn sec sm" id="btnPastLines">From past orders</button>
+        <button class="btn sec sm" id="btnImportPrices">Import prices</button>
         <button class="btn sm" id="btnAddProduct">Add a product</button>
       </div>
       <div class="card" style="padding:.3rem .4rem"><div id="priceTable"></div></div>
@@ -278,6 +282,7 @@
   <div class="dlg-b" id="dlgBody"></div>
   <div class="dlg-f" id="dlgFoot"></div>
 </form></dialog>
+<input type="file" id="pdfPick" accept="application/pdf,.pdf" multiple class="hide">
 
 <script>
 /* ---- supabase.bundle.js ---- */
@@ -740,7 +745,7 @@ function statusPill(s){
 }
 
 /* ---------- state ---------- */
-const S = { me:null, caps:[], suppliers:[], products:[], settings:{}, terms:[], pos:[], editing:null };
+const S = { me:null, caps:[], suppliers:[], products:[], settings:{}, terms:[], pos:[], editing:null, view:'dash' };
 const can = c => S.caps.includes(c);
 
 /* ================================================================
@@ -813,6 +818,7 @@ function buildTabs(){
   $$('#tabrow .tab').forEach(b => b.addEventListener('click', ()=>show(b.dataset.tab)));
 }
 function show(id){
+  S.view = id;
   $$('.view').forEach(v=>v.classList.add('hide'));
   $('#v-'+id).classList.remove('hide');
   $$('#tabrow .tab').forEach(b=>b.classList.toggle('on', b.dataset.tab===id));
@@ -872,16 +878,19 @@ async function drawDash(){
     : '<p class="muted small">Every issued order has at least one invoice against it.</p>';
 
   const { data: orphans } = await sb.from('invoices')
-    .select('ref, invoice_no, po_number, gross, invoice_date, supplier_id')
+    .select('id, ref, invoice_no, po_number, gross, invoice_date, supplier_id')
     .is('po_id', null).neq('po_number', '').limit(50);
   const byId = Object.fromEntries(S.suppliers.map(s=>[s.id,s.name]));
   $('#dashOrphan').innerHTML = (orphans||[]).length ? table(
-    ['Invoice','Date','Supplier','Quoted PO','Value'],
+    ['Invoice','Date','Supplier','Quoted PO','Value',''],
     orphans.map(i=>[
       esc(i.invoice_no || i.ref), uk(i.invoice_date), esc(byId[i.supplier_id]||''),
-      '<b>'+esc(i.po_number)+'</b>', '<span class="num">'+money(i.gross)+'</span>'
-    ]), [,,,,'num'])
+      '<b>'+esc(i.po_number)+'</b>', '<span class="num">'+money(i.gross)+'</span>',
+      can('po.raise') ? '<button class="btn sec sm" data-link="'+i.id+'">Link</button>' : ''
+    ]), [,,,,'num','right'])
     : '<p class="muted small">Nothing unmatched.</p>';
+  $$('#dashOrphan [data-link]').forEach(b => b.addEventListener('click', () =>
+    linkDialog(orphans.find(i => i.id === b.dataset.link))));
 }
 const tile = (lab, val, sub) =>
   '<div class="tile"><div class="lab">'+esc(lab)+'</div><div class="val">'+val+'</div><div class="sub">'+esc(sub||'')+'</div></div>';
@@ -912,6 +921,8 @@ function drawRegister(){
     (!st  || p.status === st) &&
     (!q   || (p.po_number+' '+p.supplier_name+' '+(p.reference||'')).toLowerCase().includes(q))
   );
+  $('#btnImportPOs').classList.toggle('hide', !can('po.raise'));
+  $('#btnAttachPDFs').classList.toggle('hide', !can('po.raise'));
   $('#regCount').textContent = rows.length + ' of ' + S.pos.length + ' orders · ' +
     money(rows.reduce((a,p)=>a+Number(p.gross||0),0));
 
@@ -999,7 +1010,10 @@ async function openPO(id){
 
   const f = [];
   if (po.pdf_path) f.push('<button type="button" class="btn sec" id="dPdf">Open the PDF</button>');
+  if (po.pdf_path && ['Issued','Sent to supplier'].includes(po.status))
+    f.push('<button type="button" class="btn sec" id="dMail">Email the supplier</button>');
   if (can('po.raise')){
+    if (po.status !== 'Draft') f.push('<button type="button" class="btn sec" id="dAttach">'+(po.pdf_path?'Replace the PDF':'Attach a PDF')+'</button>');
     if (po.status === 'Draft') f.push('<button type="button" class="btn sec" id="dEdit">Edit this draft</button>');
     if (po.status === 'Issued') f.push('<button type="button" class="btn sec" id="dSent">Mark as sent</button>');
     if (['Issued','Sent to supplier'].includes(po.status)) f.push('<button type="button" class="btn sec" id="dRecv">Mark as receipted</button>');
@@ -1012,6 +1026,8 @@ async function openPO(id){
 
   const on = (sel, fn) => { const el = $(sel); if (el) el.addEventListener('click', fn); };
   on('#dPdf',   () => openPdf(po));
+  on('#dMail',  () => emailPO(po));
+  on('#dAttach',() => attachOne(po));
   on('#dEdit',  async () => { $('#dlg').close(); await loadDraft(po, lines||[]); });
   on('#dSent',  () => setStatus(po, 'Sent to supplier'));
   on('#dRecv',  () => setStatus(po, 'Receipted'));
@@ -1357,6 +1373,8 @@ function drawPrices(){
     (!sid || p.supplier_id === sid) &&
     (!q || (p.code + ' ' + p.description).toLowerCase().includes(q)));
   $('#btnAddProduct').classList.toggle('hide', !can('products.edit'));
+  $('#btnImportPrices').classList.toggle('hide', !can('products.edit'));
+  $('#btnPastLines').classList.toggle('hide', !can('products.edit'));
   $('#priceTable').innerHTML =
     '<table><thead><tr><th>Code</th><th>Supplier</th><th>Description</th><th>Unit</th>' +
     '<th class="num">Unit price</th><th></th></tr></thead><tbody>' +
@@ -1519,6 +1537,269 @@ $('#btnSaveTerms').addEventListener('click', async () => {
   if (error) { banner('err', error.message); return; }
   await refreshAll(); drawTerms(); banner('good','Terms saved. They print on page two of every new PO.');
 });
+
+/* ================================================================
+   IMPORTS - bringing the rest of the workbook across
+   Copy the rows from the sheet, headings included, and paste. Excel
+   puts a tab between cells, so nothing needs saving as CSV first.
+   ================================================================ */
+const PO_RE = /\b([A-Z]{1,6}-[A-Z]{2,8}-\d{1,4})\b/i;
+const WB_STATUS = { 'exported':'Issued', 'issued':'Issued', 'sent':'Sent to supplier', 'sent to supplier':'Sent to supplier',
+                    'receipted':'Receipted', 'received':'Receipted', 'cancelled':'Cancelled', 'canceled':'Cancelled', 'draft':'Draft' };
+
+function parsePaste(text){
+  const rows = String(text||'').replace(/\r/g,'').split('\n').filter(r => r.trim())
+    .map(r => r.split('\t').map(c => c.trim()));
+  if (rows.length < 2) return null;
+  return { head: rows[0].map(h => h.toLowerCase()), body: rows.slice(1) };
+}
+const colOf = (head, ...words) => head.findIndex(h => words.some(w => h.includes(w)));
+const cell  = (row, i) => i < 0 ? '' : (row[i] || '');
+const parseMoney = s => { const n = Number(String(s).replace(/[£,\s]/g,'')); return isFinite(n) ? n : null; };
+//  dd/mm/yyyy as the workbook shows it, yyyy-mm-dd, or an Excel day number.
+function parseDate(s){
+  s = String(s||'').trim(); if (!s) return null;
+  let m = s.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})$/);
+  if (m){ const y = m[3].length === 2 ? '20' + m[3] : m[3];
+          return y + '-' + m[2].padStart(2,'0') + '-' + m[1].padStart(2,'0'); }
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
+  if (/^\d{5}$/.test(s)) return new Date(Date.UTC(1899,11,30) + Number(s)*864e5).toISOString().slice(0,10);
+  return null;
+}
+
+//  One dialog for every paste: a box, a preview, then a button that
+//  only goes live once the preview has found something to do.
+function pasteDialog(title, help, preview, apply){
+  $('#dlgTitle').textContent = title;
+  $('#dlgBody').innerHTML = '<p class="muted small">'+help+'</p>' +
+    '<textarea id="pxText" rows="7" placeholder="Paste here"></textarea><div id="pxOut" style="margin-top:.8rem"></div>';
+  $('#dlgFoot').innerHTML = '<button class="btn sec" value="close">Cancel</button>' +
+    '<button type="button" class="btn sec" id="pxCheck">Check</button>' +
+    '<button type="button" class="btn" id="pxGo" disabled>Import</button>';
+  $('#dlg').showModal();
+  let plan = null;
+  $('#pxCheck').addEventListener('click', () => {
+    const t = parsePaste($('#pxText').value);
+    if (!t) { say($('#pxOut'),'err','Paste the heading row and at least one row under it.'); return; }
+    plan = preview(t);
+    $('#pxOut').innerHTML = plan.html;
+    $('#pxGo').disabled = !plan.todo;
+    $('#pxGo').textContent = plan.todo ? 'Import ' + plan.todo : 'Nothing to import';
+  });
+  $('#pxText').addEventListener('input', () => { plan = null; $('#pxGo').disabled = true; });
+  $('#pxGo').addEventListener('click', async () => {
+    if (!plan) return;
+    const b = $('#pxGo'); busy(b, true, 'Importing');
+    const msg = await apply(plan);
+    busy(b, false, 'Import');
+    $('#dlg').close(); await refreshAll(); show(S.view);
+    if (msg) banner(msg.kind, msg.text);
+  });
+}
+const rowsTable = rows => table(['', ...Object.keys(rows[0].show)],
+  rows.map(r => ['<span class="pill '+(r.ok?'p-issued':'p-draft')+'">'+esc(r.why)+'</span>',
+                 ...Object.values(r.show).map(esc)]));
+
+/* ---------- old orders from the tracker ---------- */
+$('#btnImportPOs').addEventListener('click', () => pasteDialog('Import orders from the workbook',
+  'Copy the tracker rows from <b>Genus PO System.xlsm</b>, headings included, and paste them below. ' +
+  'It needs a PO number, a date and a value; status and reference are used if they are there. ' +
+  'The value is taken as net, as the tracker kept it. Orders already in the register are left alone.',
+  t => {
+    const h = t.head;
+    const iNo  = t.body[0].findIndex(c => PO_RE.test(c));
+    const iDt  = colOf(h, 'date');
+    const iVal = colOf(h, 'net', 'value', 'amount');
+    const iSt  = colOf(h, 'status');
+    const iRef = colOf(h, 'ref', 'description', 'quote', 'for');
+    if (iNo < 0 || iDt < 0 || iVal < 0)
+      return { todo:0, html:'<div class="err">Could not find the PO number, date and value columns. Check the heading row came across.</div>' };
+    const have = new Set(S.pos.map(p => p.po_number));
+    const seen = new Set();
+    const rows = t.body.map(r => {
+      const m = cell(r, iNo).match(PO_RE); const no = m ? m[1].toUpperCase() : '';
+      const code = no.split('-')[1] || '';
+      const sup = S.suppliers.find(s => s.po_code === code);
+      const dt = parseDate(cell(r, iDt)); const net = parseMoney(cell(r, iVal));
+      const st = WB_STATUS[cell(r, iSt).toLowerCase()] || 'Issued';
+      const why = !no ? 'no PO number' : have.has(no) ? 'already held' : seen.has(no) ? 'repeated'
+                : !sup ? 'no supplier with code ' + code : !dt ? 'date not read' : net == null ? 'value not read' : 'new';
+      seen.add(no);
+      return { ok: why === 'new', why, no, sup, dt, net, st, ref: iRef === iNo ? '' : cell(r, iRef),
+               show: { 'PO':no, 'Supplier': sup ? sup.name : '', 'Date': uk(dt), 'Net': net == null ? '' : money(net), 'Status': st } };
+    }).filter(r => r.no || r.why !== 'no PO number');
+    const todo = rows.filter(r => r.ok);
+    return { todo: todo.length, rows: todo, html: rows.length ? rowsTable(rows) : '<p class="muted">No rows with a PO number.</p>' };
+  },
+  async plan => {
+    const ins = plan.rows.map(r => ({ po_number:r.no, supplier_id:r.sup.id, po_date:r.dt, status:r.st, net:r.net, vat:0,
+      reference:r.ref, po_type:'Materials', value_source:'imported', notes:'Imported from the workbook.' }));
+    const { data, error } = await sb.from('purchase_orders').insert(ins).select('id, po_number');
+    if (error) return { kind:'err', text:error.message };
+    for (const p of data) await sb.rpc('po_log', { p_action:'po.imported', p_po:p.id, p_detail:{ po_number:p.po_number } });
+    return { kind:'good', text: data.length + ' orders imported.' };
+  }));
+
+/* ---------- prices ---------- */
+$('#btnImportPrices').addEventListener('click', () => pasteDialog('Import prices',
+  'Paste rows with a heading row: <b>code</b>, <b>description</b>, <b>unit</b>, <b>price</b> and <b>supplier</b> ' +
+  '(its PO code, ledger code or name). A code already on the list has its description, unit and price updated.',
+  t => {
+    const h = t.head;
+    const iCode = colOf(h, 'code', 'item'), iDesc = colOf(h, 'desc'), iUnit = colOf(h, 'unit', 'pack');
+    const iPrice = colOf(h, 'price', 'cost'), iSup = colOf(h, 'supplier');
+    if (iCode < 0 || iPrice < 0 || iSup < 0)
+      return { todo:0, html:'<div class="err">Needs at least code, price and supplier columns.</div>' };
+    const findSup = v => { v = v.trim().toLowerCase(); return S.suppliers.find(s =>
+      s.po_code.toLowerCase() === v || String(s.code).toLowerCase() === v || s.name.toLowerCase() === v); };
+    const rows = t.body.map(r => {
+      const code = cell(r, iCode), sup = findSup(cell(r, iSup)), price = parseMoney(cell(r, iPrice));
+      const old = S.products.find(p => p.code.toLowerCase() === code.toLowerCase());
+      const why = !code ? 'no code' : !sup ? 'supplier not found' : price == null ? 'price not read' : old ? 'update' : 'new';
+      return { ok: ['new','update'].includes(why), why, old,
+               row: { code, supplier_id: sup && sup.id, description: cell(r, iDesc) || (old ? old.description : ''),
+                      unit: cell(r, iUnit) || (old ? old.unit : 'each'), unit_price: price },
+               show: { 'Code':code, 'Supplier': sup ? sup.name : cell(r, iSup), 'Description': cell(r, iDesc),
+                       'Unit': cell(r, iUnit), 'Price': price == null ? '' : money(price) } };
+    }).filter(r => r.row.code);
+    const todo = rows.filter(r => r.ok);
+    return { todo: todo.length, rows: todo, html: rows.length ? rowsTable(rows) : '<p class="muted">No rows with a code.</p>' };
+  },
+  async plan => {
+    let n = 0;
+    for (const r of plan.rows){
+      const q = r.old ? sb.from('products').update(r.row).eq('id', r.old.id) : sb.from('products').insert(r.row);
+      const { error } = await q;
+      if (error) return { kind:'err', text: r.row.code + ': ' + error.message + ' (' + n + ' saved before it)' };
+      n++;
+    }
+    return { kind:'good', text: n + ' products saved to the price list.' };
+  }));
+
+//  Item codes typed on orders that never made it onto the price list.
+$('#btnPastLines').addEventListener('click', async () => {
+  const { data, error } = await sb.from('po_lines')
+    .select('item_code, description, unit, unit_price, purchase_orders(supplier_id, po_date, status)').neq('item_code', '');
+  if (error) { banner('err', error.message); return; }
+  const known = new Set(S.products.map(p => p.code.toLowerCase()));
+  const latest = {};
+  (data||[]).filter(l => l.purchase_orders && l.purchase_orders.status !== 'Cancelled').forEach(l => {
+    const k = l.item_code.toLowerCase(); if (known.has(k)) return;
+    if (!latest[k] || l.purchase_orders.po_date > latest[k].purchase_orders.po_date) latest[k] = l;
+  });
+  const list = Object.values(latest);
+  const byId = Object.fromEntries(S.suppliers.map(s => [s.id, s.name]));
+  $('#dlgTitle').textContent = 'Codes from past orders';
+  $('#dlgBody').innerHTML = list.length
+    ? '<p class="muted small">Item codes used on orders but not on the price list, at the last price paid. Tick the ones to keep.</p>' +
+      table(['','Code','Supplier','Description','Unit','Price','Last ordered'], list.map((l,i) => [
+        '<input type="checkbox" class="pl-on" data-i="'+i+'" checked style="width:auto">', esc(l.item_code),
+        esc(byId[l.purchase_orders.supplier_id]||''), esc(l.description), esc(l.unit),
+        '<span class="num">'+money(l.unit_price)+'</span>', uk(l.purchase_orders.po_date)]))
+    : '<p class="muted">Every item code on an order is already on the price list.</p>';
+  $('#dlgFoot').innerHTML = '<button class="btn sec" value="close">Close</button>' +
+    (list.length && can('products.edit') ? '<button type="button" class="btn" id="plGo">Add the ticked ones</button>' : '');
+  $('#dlg').showModal();
+  const go = $('#plGo'); if (!go) return;
+  go.addEventListener('click', async () => {
+    const rows = $$('.pl-on').filter(c => c.checked).map(c => list[Number(c.dataset.i)]).map(l => ({
+      code: l.item_code, supplier_id: l.purchase_orders.supplier_id, description: l.description,
+      unit: l.unit || 'each', unit_price: l.unit_price }));
+    if (!rows.length) return;
+    busy(go, true, 'Adding');
+    const { error } = await sb.from('products').insert(rows);
+    busy(go, false, 'Add the ticked ones');
+    if (error) { alert(error.message); return; }
+    $('#dlg').close(); await refreshAll(); drawPrices(); banner('good', rows.length + ' products added to the price list.');
+  });
+});
+
+/* ---------- PDFs ---------- */
+//  Files are matched to orders by the PO number in the file name, so
+//  "GF-BOC-002 BOC vessel.pdf" lands on GF-BOC-002.
+let pdfTarget = null;
+$('#btnAttachPDFs').addEventListener('click', () => { pdfTarget = null; $('#pdfPick').value = ''; $('#pdfPick').click(); });
+$('#pdfPick').addEventListener('change', () => {
+  const files = Array.from($('#pdfPick').files || []); if (!files.length) return;
+  const rows = files.map(f => {
+    const m = f.name.match(PO_RE);
+    const po = pdfTarget || (m && S.pos.find(p => p.po_number === m[1].toUpperCase()));
+    const why = !po ? 'no matching order' : po.pdf_path ? 'replaces the one held' : 'new';
+    return { f, po, ok: !!po, why, show: { 'File': f.name, 'Order': po ? po.po_number : '', 'Supplier': po ? po.supplier_name : '' } };
+  });
+  const todo = rows.filter(r => r.ok);
+  $('#dlgTitle').textContent = 'Attach PDFs';
+  $('#dlgBody').innerHTML = rowsTable(rows) +
+    (rows.length > todo.length ? '<p class="muted small">Files without a matching order are skipped. ' +
+      'Rename them to include the PO number, or import the order first.</p>' : '');
+  $('#dlgFoot').innerHTML = '<button class="btn sec" value="close">Cancel</button>' +
+    '<button type="button" class="btn" id="pdGo"'+(todo.length?'':' disabled')+'>Attach '+todo.length+'</button>';
+  if (!$('#dlg').open) $('#dlg').showModal();
+  $('#pdGo').addEventListener('click', async () => {
+    const b = $('#pdGo'); busy(b, true, 'Uploading');
+    let n = 0, fail = [];
+    for (const r of todo){
+      const path = r.po.po_number + '.pdf';
+      const up = await sb.storage.from('purchase-orders').upload(path, r.f, { upsert:true, contentType:'application/pdf' });
+      const db = up.error ? up : await sb.from('purchase_orders').update({ pdf_path:path }).eq('id', r.po.id);
+      if (db.error) { fail.push(r.po.po_number + ': ' + db.error.message); continue; }
+      await sb.rpc('po_log', { p_action:'po.pdf_attached', p_po:r.po.id, p_detail:{ po_number:r.po.po_number, file:r.f.name } });
+      n++;
+    }
+    busy(b, false, 'Attach');
+    $('#dlg').close(); await refreshAll(); drawRegister();
+    banner(fail.length ? 'err' : 'good', n + ' PDFs attached.' + (fail.length ? ' Not attached: ' + fail.join('; ') : ''));
+  });
+});
+function attachOne(po){ pdfTarget = po; $('#pdfPick').value = ''; $('#pdfPick').click(); }
+
+/* ---------- emailing a PO ---------- */
+//  There is no mail server behind this page, so it does the two fiddly
+//  parts - saving the PDF under its number and writing the email - and
+//  leaves the sending to Outlook.
+async function emailPO(po){
+  const sup = S.suppliers.find(s => s.id === po.supplier_id) || {};
+  const { data, error } = await sb.storage.from('purchase-orders').download(po.pdf_path);
+  if (error) { alert('Could not fetch the PDF: ' + error.message); return; }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(data); a.download = po.po_number + '.pdf';
+  document.body.appendChild(a); a.click(); a.remove();
+  const g = k => S.settings[k] || '';
+  const body = ['Hello,', '',
+    'Please find attached purchase order ' + po.po_number + ' dated ' + uk(po.po_date) + '.', '',
+    'Please quote ' + po.po_number + ' on every invoice, delivery note and email about this order, ' +
+    'and send invoices to ' + g('coInvoiceEmail') + '.', '',
+    'Thank you,', S.me.full_name || '', g('coName')].join('\n');
+  location.href = 'mailto:' + encodeURIComponent(sup.email || '') +
+    '?subject=' + encodeURIComponent('Purchase order ' + po.po_number) + '&body=' + encodeURIComponent(body);
+  const note = document.createElement('div');
+  note.className = 'note';
+  note.innerHTML = 'The PDF has been saved as <b>' + esc(po.po_number) + '.pdf</b> in your downloads. ' +
+    'Attach it to the email that has just opened' + (sup.email ? '' : ', and add the supplier\'s address, as none is held for them') + '.' +
+    (po.status === 'Issued' ? ' <button type="button" class="btn sm" id="dSentNow" style="margin-left:.4rem">I\'ve sent it</button>' : '');
+  $('#dlgBody').prepend(note);
+  const s = $('#dSentNow'); if (s) s.addEventListener('click', () => setStatus(po, 'Sent to supplier'));
+}
+
+/* ---------- linking an invoice by hand ---------- */
+function linkDialog(inv){
+  const mine = S.pos.filter(p => p.supplier_id === inv.supplier_id);
+  const list = (mine.length ? mine : S.pos).filter(p => p.status !== 'Cancelled');
+  $('#dlgTitle').textContent = 'Link invoice ' + (inv.invoice_no || inv.ref);
+  $('#dlgBody').innerHTML = '<p class="muted small">It quotes <b>' + esc(inv.po_number) + '</b>, which is not in the register. ' +
+    'Pick the order it belongs to. The number the supplier quoted stays on the invoice as they wrote it.</p>' +
+    '<label>Order</label><select id="lkPo"><option value="">Choose</option>' +
+    list.map(p => '<option value="'+p.id+'">'+esc(p.po_number+' · '+p.supplier_name+' · '+money(p.gross))+'</option>').join('') +
+    '</select>' + (mine.length ? '' : '<p class="muted small">No orders for this supplier, so every order is listed.</p>');
+  $('#dlgFoot').innerHTML = '<button class="btn sec" value="close">Cancel</button><button type="button" class="btn" id="lkGo">Link</button>';
+  $('#dlg').showModal();
+  $('#lkGo').addEventListener('click', async () => {
+    if (!$('#lkPo').value) return;
+    const { error } = await sb.rpc('link_invoice_po', { p_invoice: inv.id, p_po: $('#lkPo').value });
+    if (error) { alert(error.message); return; }
+    $('#dlg').close(); await refreshAll(); drawDash(); banner('good', 'Invoice linked.');
+  });
+}
 
 /* ---------- filters ---------- */
 ['fSearch','fSupplier','fStatus'].forEach(id =>
