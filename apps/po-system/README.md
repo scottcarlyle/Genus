@@ -77,6 +77,7 @@ migration runner — the Genus project has no migration tooling.
 | `003_security.sql` | capabilities, row level security, the storage bucket |
 | `004_migrate_from_workbook.sql` | everything that came across from the .xlsm |
 | `005_link_invoices.sql` | Applied 18 Oct 2026. Keeps invoices linked to their PO from either side, and `link_invoice_po` for the dashboard's Link button |
+| `006_import_workbook_v6.sql` | Applied 18 Oct 2026. Brings the register level with the last workbook (`Genus_PO_System_6.xlsm`): 27 more orders with their lines, the full price list, and 6 more suppliers with PO codes |
 
 ## Importing
 
@@ -102,16 +103,21 @@ mark the order as sent.
 
 ## Still open
 
-- The register holds the tracker as at **12 July 2026**. Invoices already quote
-  GF-COS-010, GF-ANE-003, GF-LOV-004, GF-PLN-004, GF-VIT-002 and GF-IVF-004, so
-  the live workbook is ahead. Import from the current one (Import orders)
-  before treating the register as complete. Numbering is safe either way.
-- The 32 historic PDFs have not been attached. They are in
-  `.../Genus Fertility Operations/Finance/PO/` (Attach PDFs).
-- The price list needs rebuilding from the POs: 13 products across 3 suppliers
-  against 32 orders from 16 suppliers. The imported orders carry no lines, so
-  this has to come from the PDFs or a price sheet (Import prices).
-- GF-BIOMED-001 and GMF-SLS-001 appear on invoices but fit no scheme the
-  workbook used. Link them by hand once it is known which order they are.
-- Only 5 of 50 suppliers have an email address, so most PO emails need the
+The workbook was retired on 18 Oct 2026. The register now holds every order it
+had (58), plus GF-COS-009, which was raised but never entered on the tracker.
+The workbook is kept read-only in `Finance/PO/Archive/`.
+
+- The 56 PO PDFs still need attaching, using Attach PDFs. Copies of all of
+  them are in `Finance/PO/PDFs to attach in PO app/`, so they can be picked in
+  one go. Delete that folder afterwards; the originals stay in the supplier
+  folders. There is no PDF for GF-ANE-001, GF-AMD-001 or GF-VIT-002. Only the
+  `-1` re-saves of the last two have one.
+- The GF-COS-008 and GF-COS-008-1 PDFs are blank. GF-COS-009 has the same
+  items minus the oil, so it may be the re-raise of GF-COS-008. Cancel
+  GF-COS-008 if so.
+- GMF-SLS-001, two HealthNet/Stork references (05/10/26, 06/10/26) and
+  RIKKA 5/10/26 are quoted on invoices but are not PO numbers. Link them by
+  hand if they belong to an order.
+- Several Cooper Surgical invoices from August and September quote no PO.
+- Only a few suppliers have an email address, so most PO emails need the
   address typed in.
