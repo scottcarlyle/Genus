@@ -1,0 +1,17 @@
+{
+  "name": "genus-purchase-orders",
+  "private": true,
+  "description": "Build dependencies for Genus Purchase Orders.html. Bundled into the page, not loaded from a CDN.",
+  "devDependencies": {
+    "esbuild": "0.23.1"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "2.45.4",
+    "jspdf": "2.5.2",
+    "jspdf-autotable": "3.8.4"
+  },
+  "scripts": {
+    "bundle": "esbuild sbentry.js --bundle --format=iife --global-name=supabase --platform=browser --target=es2019 --minify --outfile=build/supabase.bundle.js",
+    "build": "npm run bundle && python3 build.py"
+  }
+}
