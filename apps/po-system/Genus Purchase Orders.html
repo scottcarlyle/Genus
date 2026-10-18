@@ -102,11 +102,22 @@
   .detail{background:#fbfcfc}
   .detail td{border-bottom:1px solid var(--line)}
   dialog{border:none; border-radius:var(--radius); box-shadow:0 10px 40px rgba(0,0,0,.25);
-         padding:0; max-width:min(680px,94vw); width:100%}
+         padding:0; max-width:min(860px,96vw); width:100%}
   dialog::backdrop{background:rgba(43,51,56,.45)}
   .dlg-h{padding:.9rem 1.1rem; border-bottom:1px solid var(--line); display:flex; align-items:center}
-  .dlg-b{padding:1.1rem; max-height:65vh; overflow:auto}
-  .dlg-f{padding:.8rem 1.1rem; border-top:1px solid var(--line); display:flex; gap:.5rem; justify-content:flex-end}
+  .dlg-b{padding:1.1rem; max-height:62vh; overflow:auto}
+  /* The buttons wrap onto a second row rather than squeezing their labels. */
+  .dlg-f{padding:.8rem 1.1rem; border-top:1px solid var(--line); display:flex; gap:.5rem;
+         justify-content:flex-end; flex-wrap:wrap}
+  .dlg-f .btn{white-space:nowrap}
+  /* Every column heading sorts its table. */
+  table:not(.lines) thead th:not(:empty){cursor:pointer; user-select:none}
+  table:not(.lines) thead th:not(:empty):hover{color:var(--slate)}
+  th[data-dir]{color:var(--slate)}
+  th[data-dir="asc"]::after{content:" \25B2"; font-size:.62rem}
+  th[data-dir="desc"]::after{content:" \25BC"; font-size:.62rem}
+  .folder{font-size:.84rem; color:var(--muted)}
+  .folder b{color:var(--slate)}
   .hide{display:none !important}
   .spin{display:inline-block;width:14px;height:14px;border:2px solid #fff;border-top-color:transparent;
         border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px}
@@ -173,6 +184,11 @@
         <span class="muted small" id="regCount"></span>
         <button class="btn sec sm" id="btnImportPOs">Import orders</button>
         <button class="btn sec sm" id="btnAttachPDFs">Attach PDFs</button>
+        <button class="btn sec sm" id="btnAttachFolder" title="Pick a folder - every PDF in it and its sub-folders is matched by PO number">Attach a folder of PDFs</button>
+      </div>
+      <div class="row folder" style="margin:-.3rem 0 .8rem">
+        <span id="folderState"></span>
+        <button class="btn sec sm" id="btnFolder">Link the PO folder</button>
       </div>
       <div class="card" style="padding:.3rem .4rem"><div id="regTable"></div></div>
     </section>
@@ -223,6 +239,7 @@
       </div>
 
       <div class="row" style="justify-content:flex-end">
+        <span class="folder" id="folderState2" style="margin-right:auto"></span>
         <button class="btn sec" id="btnRaiseReset">Clear</button>
         <button class="btn sec" id="btnPreview">Preview the PDF</button>
         <button class="btn sec" id="btnSaveDraft">Save as draft</button>
@@ -283,6 +300,7 @@
   <div class="dlg-f" id="dlgFoot"></div>
 </form></dialog>
 <input type="file" id="pdfPick" accept="application/pdf,.pdf" multiple class="hide">
+<input type="file" id="pdfDirPick" webkitdirectory multiple class="hide">
 
 <script>
 /* ---- supabase.bundle.js ---- */
@@ -797,6 +815,7 @@ async function start(){
                             : can('po.raise') ? 'can raise POs' : 'can view POs';
   $('#app').classList.remove('hide');
   buildTabs();
+  await folderLoad();
   await refreshAll();
   show('dash');
 }
@@ -891,6 +910,7 @@ async function drawDash(){
     : '<p class="muted small">Nothing unmatched.</p>';
   $$('#dashOrphan [data-link]').forEach(b => b.addEventListener('click', () =>
     linkDialog(orphans.find(i => i.id === b.dataset.link))));
+  resort('dashOpen'); resort('dashOrphan');
 }
 const tile = (lab, val, sub) =>
   '<div class="tile"><div class="lab">'+esc(lab)+'</div><div class="val">'+val+'</div><div class="sub">'+esc(sub||'')+'</div></div>';
@@ -901,6 +921,51 @@ function table(heads, rows, cls){
   return '<table><thead><tr>' + heads.map((h,i)=>'<th class="'+(cls[i]||'')+'">'+esc(h)+'</th>').join('') +
     '</tr></thead><tbody>' + rows.map(r=>'<tr>' + r.map((c,i)=>'<td class="'+(cls[i]||'')+'">'+c+'</td>').join('') + '</tr>').join('') +
     '</tbody></table>';
+}
+
+/* ---------- sorting ---------- */
+//  Click any column heading to sort by it, again to reverse. The choice is
+//  kept per table, so it survives the redraws that filtering and saving
+//  cause. Dates (dd/mm/yyyy) and money sort as values; blanks go last.
+const SORT = {};
+function sortVal(td){
+  const t = (td.dataset.sort != null ? td.dataset.sort : td.textContent).trim();
+  if (!t || t === '-') return null;
+  const m = t.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (m) return Number(m[3] + m[2] + m[1]);
+  const n = t.replace(/\s*days?$/i, '').replace(/[£,%\s]/g, '');
+  if (/^-?\d+(\.\d+)?$/.test(n)) return Number(n);
+  return t.toLowerCase();
+}
+function sortTable(tbl, col, dir){
+  const body = tbl.tBodies[0], head = tbl.tHead && tbl.tHead.rows[0];
+  if (!body || !head) return;
+  const rows = Array.from(body.rows);
+  if (!rows.length || rows.some(r => r.cells.length !== head.cells.length)) return;   // "nothing here" rows
+  const keyed = rows.map((r, i) => ({ r, i, v: sortVal(r.cells[col]) }));
+  keyed.sort((a, b) => {
+    if (a.v === null || b.v === null) return a.v === b.v ? a.i - b.i : (a.v === null ? 1 : -1);
+    const c = (typeof a.v === 'number' && typeof b.v === 'number') ? a.v - b.v
+            : String(a.v).localeCompare(String(b.v), 'en-GB', { numeric:true, sensitivity:'base' });
+    return (dir === 'desc' ? -c : c) || a.i - b.i;
+  });
+  keyed.forEach(k => body.appendChild(k.r));
+  Array.from(head.cells).forEach((th, i) => { if (i === col) th.dataset.dir = dir; else delete th.dataset.dir; });
+}
+const sortHost = tbl => { const h = tbl.closest('[id]'); return h ? h.id : ''; };
+document.addEventListener('click', e => {
+  const th = e.target.closest('thead th'); if (!th || !th.textContent.trim()) return;
+  const tbl = th.closest('table'); if (!tbl || tbl.classList.contains('lines')) return;
+  const host = sortHost(tbl), prev = SORT[host], col = th.cellIndex;
+  const dir = prev && prev.col === col && prev.dir === 'asc' ? 'desc' : 'asc';
+  SORT[host] = { col, dir };
+  sortTable(tbl, col, dir);
+});
+//  Put a redrawn table back in the order the user last chose.
+function resort(host){
+  const s = SORT[host], el = document.getElementById(host);
+  const tbl = el && el.querySelector('table');
+  if (s && tbl) sortTable(tbl, s.col, s.dir);
 }
 
 /* ================================================================
@@ -923,6 +988,7 @@ function drawRegister(){
   );
   $('#btnImportPOs').classList.toggle('hide', !can('po.raise'));
   $('#btnAttachPDFs').classList.toggle('hide', !can('po.raise'));
+  $('#btnAttachFolder').classList.toggle('hide', !can('po.raise'));
   $('#regCount').textContent = rows.length + ' of ' + S.pos.length + ' orders · ' +
     money(rows.reduce((a,p)=>a+Number(p.gross||0),0));
 
@@ -939,6 +1005,8 @@ function drawRegister(){
     if (e.target.closest('button')) return;
     openPO(tr.dataset.po);
   }));
+  resort('regTable');
+  drawFolderState();
 }
 function regRow(p){
   const left = Number(p.gross||0) - Number(p.invoiced||0);
@@ -964,9 +1032,114 @@ $('#regTable').addEventListener('click', async e => {
 });
 async function openPdf(po){
   if (!po || !po.pdf_path) return;
+  //  Open the tab straight away, while it still counts as a click. Safari
+  //  blocks a tab opened after waiting on the server.
+  const tab = window.open('', '_blank');
   const { data, error } = await sb.storage.from('purchase-orders').createSignedUrl(po.pdf_path, 120);
-  if (error) { banner('err', 'Could not open that PDF: ' + error.message); return; }
-  window.open(data.signedUrl, '_blank');
+  if (error) { if (tab) tab.close(); alert('Could not open that PDF: ' + error.message); return; }
+  if (tab) tab.location.href = data.signedUrl; else window.location.assign(data.signedUrl);
+}
+
+/* ================================================================
+   THE PO FOLDER
+   Issued POs are saved into the OneDrive PO folder, in the supplier's
+   own sub-folder, as the workbook did. A web page can only write to a
+   folder the user has picked once ("Link the PO folder"); the browser
+   remembers it. Chrome and Edge can do this. Safari and Firefox cannot,
+   so there the PDF is downloaded instead.
+   ================================================================ */
+const FOLDER = { handle:null, supported: typeof window.showDirectoryPicker === 'function' };
+const kv_ = (mode, fn) => new Promise((res, rej) => {
+  const r = indexedDB.open('genus-po', 1);
+  r.onupgradeneeded = () => r.result.createObjectStore('kv');
+  r.onerror = () => rej(r.error);
+  r.onsuccess = () => {
+    const q = fn(r.result.transaction('kv', mode).objectStore('kv'));
+    q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error);
+  };
+});
+async function folderLoad(){
+  if (!FOLDER.supported) return drawFolderState();
+  try { FOLDER.handle = (await kv_('readonly', s => s.get('poFolder'))) || null; } catch(e) { FOLDER.handle = null; }
+  drawFolderState();
+}
+function drawFolderState(){
+  const h = FOLDER.handle;
+  const txt = !FOLDER.supported
+    ? 'This browser cannot save into a folder, so issued POs are downloaded instead. Open this page in Chrome or Edge to save them straight into the PO folder.'
+    : h ? 'Issued POs are saved to the <b>' + esc(h.name) + '</b> folder, in the supplier\'s folder.'
+        : 'Link the OneDrive PO folder and issued POs are saved there, in the supplier\'s folder. Until then they are downloaded.';
+  ['#folderState', '#folderState2'].forEach(s => { const el = $(s); if (el) el.innerHTML = txt; });
+  const b = $('#btnFolder');
+  if (b){ b.classList.toggle('hide', !FOLDER.supported || !can('po.raise')); b.textContent = h ? 'Change folder' : 'Link the PO folder'; }
+}
+$('#btnFolder').addEventListener('click', async () => {
+  try {
+    const h = await window.showDirectoryPicker({ id:'genus-po', mode:'readwrite' });
+    FOLDER.handle = h;
+    try { await kv_('readwrite', s => s.put(h, 'poFolder')); } catch(e) { /* remembered for this visit only */ }
+    drawFolderState();
+    banner('good', 'Linked to the "' + h.name + '" folder. Pick the PO folder itself, the one holding a folder per supplier.');
+  } catch(e) { if (e.name !== 'AbortError') banner('err', 'Could not link the folder: ' + e.message); }
+});
+//  Call at the very start of a click: the browser only asks for permission
+//  while it still counts as one.
+async function folderReady(){
+  const h = FOLDER.handle; if (!h) return false;
+  try {
+    if (await h.queryPermission({ mode:'readwrite' }) === 'granted') return true;
+    return await h.requestPermission({ mode:'readwrite' }) === 'granted';
+  } catch(e) { return false; }
+}
+//  The supplier's folder: the one already holding that supplier's POs,
+//  else one named after them, else a new one.
+async function supplierFolder(po){
+  const root = FOLDER.handle;
+  const sup = S.suppliers.find(s => s.id === po.supplier_id) || {};
+  const parts = po.po_number.split('-');
+  const stem = (parts[0] + '-' + (parts[1] || sup.po_code || '') + '-').toUpperCase();
+  const flat = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+  const want = flat(sup.name);
+  let byFile = null, byName = null;
+  for await (const [name, h] of root.entries()){
+    if (h.kind !== 'directory' || /^(archive|pdfs to attach)/i.test(name)) continue;
+    const n = flat(name);
+    if (!byName && n && want && (n === want || want.startsWith(n) || n.startsWith(want))) byName = h;
+    if (!byFile) for await (const f of h.keys()) if (f.toUpperCase().startsWith(stem)) { byFile = h; break; }
+  }
+  return byFile || byName ||
+    root.getDirectoryHandle((sup.name || parts[1] || 'Other').replace(/[\/\\:*?"<>|]+/g, ' ').trim(), { create:true });
+}
+async function saveToFolder(po, blob){
+  const dir = await supplierFolder(po);
+  const fh = await dir.getFileHandle(po.po_number + '.pdf', { create:true });
+  const w = await fh.createWritable(); await w.write(blob); await w.close();
+  return dir.name + '/' + po.po_number + '.pdf';
+}
+function downloadBlob(blob, name){
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+}
+//  Save a PO's PDF to the folder if one is linked, otherwise download it.
+//  Returns a sentence saying where it went.
+async function keepCopy(po, blob, folderOk){
+  if (folderOk){
+    try { return 'saved to ' + FOLDER.handle.name + '/' + await saveToFolder(po, blob); }
+    catch(e) { downloadBlob(blob, po.po_number + '.pdf'); return 'downloaded, because the folder would not take it (' + e.message + ')'; }
+  }
+  downloadBlob(blob, po.po_number + '.pdf');
+  return 'downloaded to your Downloads folder';
+}
+async function copyToFolder(po){
+  const folderOk = await folderReady();
+  const { data, error } = await sb.storage.from('purchase-orders').download(po.pdf_path);
+  if (error) { alert('Could not fetch the PDF: ' + error.message); return; }
+  const where = await keepCopy(po, data, folderOk);
+  const note = document.createElement('div');
+  note.className = 'good'; note.textContent = po.po_number + '.pdf ' + where + '.';
+  $('#dlgBody').prepend(note);
 }
 
 /* ---------- one PO ---------- */
@@ -1010,6 +1183,8 @@ async function openPO(id){
 
   const f = [];
   if (po.pdf_path) f.push('<button type="button" class="btn sec" id="dPdf">Open the PDF</button>');
+  if (po.pdf_path) f.push('<button type="button" class="btn sec" id="dCopy">' +
+    (FOLDER.handle ? 'Save to the PO folder' : 'Download the PDF') + '</button>');
   if (po.pdf_path && ['Issued','Sent to supplier'].includes(po.status))
     f.push('<button type="button" class="btn sec" id="dMail">Email the supplier</button>');
   if (can('po.raise')){
@@ -1026,6 +1201,7 @@ async function openPO(id){
 
   const on = (sel, fn) => { const el = $(sel); if (el) el.addEventListener('click', fn); };
   on('#dPdf',   () => openPdf(po));
+  on('#dCopy',  () => copyToFolder(po));
   on('#dMail',  () => emailPO(po));
   on('#dAttach',() => attachOne(po));
   on('#dEdit',  async () => { $('#dlg').close(); await loadDraft(po, lines||[]); });
@@ -1225,7 +1401,9 @@ $('#btnSaveDraft').addEventListener('click', async () => {
 });
 
 $('#btnIssue').addEventListener('click', async () => {
-  const b = $('#btnIssue'); busy(b, true, 'Issuing');
+  const b = $('#btnIssue');
+  const folderOk = await folderReady();   // ask now, while this still counts as a click
+  busy(b, true, 'Issuing');
   try{
     const id = await saveDraft();
     if (!id) return;
@@ -1238,9 +1416,10 @@ $('#btnIssue').addEventListener('click', async () => {
     if (up.error) { say($('#raiseMsg'),'err','Saved, but the PDF would not file: ' + up.error.message); return; }
     const { error } = await sb.rpc('issue_po', { p_id:id, p_pdf_path:path });
     if (error) { say($('#raiseMsg'),'err',error.message); return; }
+    const where = await keepCopy(po, blob, folderOk);
     await refreshAll();
     resetRaise();
-    say($('#raiseMsg'), 'good', po.po_number + ' issued. The PDF is filed against it in the register.');
+    say($('#raiseMsg'), 'good', po.po_number + ' issued. The PDF is filed against it in the register, and a copy was ' + where + '.');
     window.open(URL.createObjectURL(blob), '_blank');
   } finally { busy(b, false, 'Save and issue'); }
 });
@@ -1388,6 +1567,7 @@ function drawPrices(){
     '</tbody></table>';
   $$('#priceTable [data-edit]').forEach(b =>
     b.addEventListener('click', () => productDialog(S.products.find(p => p.id === b.dataset.edit))));
+  resort('priceTable');
 }
 $('#btnAddProduct').addEventListener('click', () => productDialog(null));
 
@@ -1457,6 +1637,7 @@ function drawSuppliers(){
     }).join('') + '</tbody></table>';
   $$('#supTable [data-sup]').forEach(b =>
     b.addEventListener('click', () => supplierDialog(S.suppliers.find(s => s.id === b.dataset.sup))));
+  resort('supTable');
 }
 function supplierDialog(s){
   $('#dlgTitle').textContent = s.name;
@@ -1543,7 +1724,9 @@ $('#btnSaveTerms').addEventListener('click', async () => {
    Copy the rows from the sheet, headings included, and paste. Excel
    puts a tab between cells, so nothing needs saving as CSV first.
    ================================================================ */
-const PO_RE = /\b([A-Z]{1,6}-[A-Z]{2,8}-\d{1,4})\b/i;
+//  The optional "-1" catches the re-saved copies, such as GF-COS-008-1,
+//  so their PDF does not land on the original order.
+const PO_RE = /\b([A-Z]{1,6}-[A-Z]{2,8}-\d{1,4}(?:-\d{1,2})?)\b/i;
 const WB_STATUS = { 'exported':'Issued', 'issued':'Issued', 'sent':'Sent to supplier', 'sent to supplier':'Sent to supplier',
                     'receipted':'Receipted', 'received':'Receipted', 'cancelled':'Cancelled', 'canceled':'Cancelled', 'draft':'Draft' };
 
@@ -1717,16 +1900,24 @@ $('#btnPastLines').addEventListener('click', async () => {
 /* ---------- PDFs ---------- */
 //  Files are matched to orders by the PO number in the file name, so
 //  "GF-BOC-002 BOC vessel.pdf" lands on GF-BOC-002.
+//  "Attach a folder of PDFs" takes the whole PO folder, supplier folders
+//  and all; each PDF still has to carry its PO number in its name.
 let pdfTarget = null;
 $('#btnAttachPDFs').addEventListener('click', () => { pdfTarget = null; $('#pdfPick').value = ''; $('#pdfPick').click(); });
-$('#pdfPick').addEventListener('change', () => {
-  const files = Array.from($('#pdfPick').files || []); if (!files.length) return;
+$('#btnAttachFolder').addEventListener('click', () => { pdfTarget = null; $('#pdfDirPick').value = ''; $('#pdfDirPick').click(); });
+$('#pdfPick').addEventListener('change', () => pdfsChosen(Array.from($('#pdfPick').files || [])));
+$('#pdfDirPick').addEventListener('change', () =>
+  pdfsChosen(Array.from($('#pdfDirPick').files || []).filter(f => /\.pdf$/i.test(f.name) && !f.name.startsWith('.'))));
+function pdfsChosen(files){
+  if (!files.length) return;
+  const seen = new Set();
   const rows = files.map(f => {
     const m = f.name.match(PO_RE);
     const po = pdfTarget || (m && S.pos.find(p => p.po_number === m[1].toUpperCase()));
-    const why = !po ? 'no matching order' : po.pdf_path ? 'replaces the one held' : 'new';
-    return { f, po, ok: !!po, why, show: { 'File': f.name, 'Order': po ? po.po_number : '', 'Supplier': po ? po.supplier_name : '' } };
-  });
+    const dup = po && seen.has(po.id); if (po) seen.add(po.id);
+    const why = !po ? 'no matching order' : dup ? 'same order as another file' : po.pdf_path ? 'replaces the one held' : 'new';
+    return { f, po, ok: !!po && !dup, why, show: { 'File': f.name, 'Order': po ? po.po_number : '', 'Supplier': po ? po.supplier_name : '' } };
+  }).sort((a, b) => (b.ok - a.ok) || a.f.name.localeCompare(b.f.name));
   const todo = rows.filter(r => r.ok);
   $('#dlgTitle').textContent = 'Attach PDFs';
   $('#dlgBody').innerHTML = rowsTable(rows) +
@@ -1739,6 +1930,7 @@ $('#pdfPick').addEventListener('change', () => {
     const b = $('#pdGo'); busy(b, true, 'Uploading');
     let n = 0, fail = [];
     for (const r of todo){
+      b.innerHTML = '<span class="spin"></span> Uploading ' + (n + fail.length + 1) + ' of ' + todo.length;
       const path = r.po.po_number + '.pdf';
       const up = await sb.storage.from('purchase-orders').upload(path, r.f, { upsert:true, contentType:'application/pdf' });
       const db = up.error ? up : await sb.from('purchase_orders').update({ pdf_path:path }).eq('id', r.po.id);
@@ -1750,7 +1942,7 @@ $('#pdfPick').addEventListener('change', () => {
     $('#dlg').close(); await refreshAll(); drawRegister();
     banner(fail.length ? 'err' : 'good', n + ' PDFs attached.' + (fail.length ? ' Not attached: ' + fail.join('; ') : ''));
   });
-});
+}
 function attachOne(po){ pdfTarget = po; $('#pdfPick').value = ''; $('#pdfPick').click(); }
 
 /* ---------- emailing a PO ---------- */
