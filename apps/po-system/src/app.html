@@ -279,6 +279,10 @@
     <!-- ---------- SUPPLIERS ---------- -->
     <section id="v-sup" class="view hide">
       <div class="note" id="supNote"></div>
+      <div class="toolbar">
+        <span class="spacer"></span>
+        <button class="btn sm" id="btnAddSupplier">Add a supplier</button>
+      </div>
       <div class="card" style="padding:.3rem .4rem"><div id="supTable"></div></div>
     </section>
 
@@ -338,7 +342,7 @@
 const SB_URL = 'SB_URL_HERE';
 const SB_KEY = 'SB_ANON_KEY';
 //  Bump with every change, so anyone can see which copy they have open.
-const APP_VERSION = '1.10 (18 Oct 2026)';
+const APP_VERSION = '1.11 (18 Oct 2026)';
 const LOGO     = 'LOGO_SRC';
 const LOGO_PDF = 'LOGO_PDF_SRC';
 
@@ -952,15 +956,23 @@ async function removePO(po){
 /* ================================================================
    RAISE A PO
    ================================================================ */
+//  Rebuilt each time the tab is shown, so a supplier added or given a PO
+//  code on the Suppliers tab can be picked straight away.
+function fillRaiseSuppliers(){
+  const sel = $('#rSupplier'), keep = sel.value;
+  const ok  = S.suppliers.filter(s => !s.archived && s.po_code);
+  const bad = S.suppliers.filter(s => !s.archived && !s.po_code);
+  sel.innerHTML = '<option value="">Choose a supplier</option>' +
+    ok.map(s=>'<option value="'+s.id+'">'+esc(s.name)+' ('+esc(s.po_code)+')</option>').join('') +
+    (bad.length ? '<optgroup label="No PO code yet - set one on the Suppliers tab">' +
+      bad.map(s=>'<option value="'+s.id+'" disabled>'+esc(s.name)+'</option>').join('') + '</optgroup>' : '');
+  if (ok.some(s => s.id === keep)) sel.value = keep;
+}
 function drawRaise(){
   const sel = $('#rSupplier');
-  if (!sel.options.length){
-    const ok  = S.suppliers.filter(s => !s.archived && s.po_code);
-    const bad = S.suppliers.filter(s => !s.archived && !s.po_code);
-    sel.innerHTML = '<option value="">Choose a supplier</option>' +
-      ok.map(s=>'<option value="'+s.id+'">'+esc(s.name)+' ('+esc(s.po_code)+')</option>').join('') +
-      (bad.length ? '<optgroup label="No PO code yet - set one on the Suppliers tab">' +
-        bad.map(s=>'<option value="'+s.id+'" disabled>'+esc(s.name)+'</option>').join('') + '</optgroup>' : '');
+  const first = !sel.options.length;
+  fillRaiseSuppliers();
+  if (first){
     $('#rDate').value = today();
     $('#rDelivery').value = deliveryDefault();
     addLine(); addLine(); addLine();
@@ -1361,6 +1373,7 @@ function drawSuppliers(){
         '<td class="right">'+(can('suppliers.edit')
           ? '<button class="btn sec sm" data-sup="'+s.id+'">Edit</button>' : '')+'</td></tr>';
     }).join('') + '</tbody></table>';
+  $('#btnAddSupplier').classList.toggle('hide', !can('suppliers.edit'));
   $$('#supTable [data-sup]').forEach(b =>
     b.addEventListener('click', () => supplierDialog(S.suppliers.find(s => s.id === b.dataset.sup))));
   resort('supTable');
@@ -1392,6 +1405,66 @@ function supplierDialog(s){
     $('#dlg').close(); await refreshAll(); drawSuppliers();
   });
 }
+
+//  A new supplier goes into the same supplier list the invoice system uses.
+//  Bank details are not taken here: they are added and checked there.
+$('#btnAddSupplier').addEventListener('click', () => {
+  $('#dlgTitle').textContent = 'Add a supplier';
+  $('#dlgBody').innerHTML =
+    '<p class="muted small">This adds the supplier to the list the invoice system uses too. ' +
+    'Bank details are added there, not here.</p>' +
+    '<div class="grid g2">' +
+      '<div style="grid-column:span 2"><label>Supplier name</label><input id="nsName" autocomplete="off"></div>' +
+      '<div><label>PO code</label><input id="nsPo" maxlength="10" placeholder="as in GF-BOC-001"></div>' +
+      '<div><label>Ledger code</label><input id="nsCode" maxlength="12"></div>' +
+      '<div style="grid-column:span 2"><label>Email for orders</label><input id="nsMail" type="email" autocomplete="off"></div>' +
+      '<div style="grid-column:span 2"><label>Address line 1</label><input id="nsA1"></div>' +
+      '<div><label>Postcode</label><input id="nsPC"></div>' +
+      '<div style="grid-column:span 2"><label>Address line 2</label><input id="nsA2"></div>' +
+      '<div><label>VAT registration</label><input id="nsVat"></div>' +
+      '<div><label>Payment terms (days)</label><input id="nsTerms" type="number" min="0" value="30"></div>' +
+      '<div><label>VAT rate (%)</label><input id="nsRate" type="number" min="0" max="100" step="0.5" value="20"></div>' +
+    '</div><div id="nsMsg" style="margin-top:.6rem"></div>';
+  $('#dlgFoot').innerHTML = '<button class="btn sec" value="close">Cancel</button>' +
+    '<button type="button" class="btn" id="nsGo">Add the supplier</button>';
+  $('#dlg').showModal();
+  //  Suggest codes from the name until the user types their own.
+  const touched = {};
+  ['nsPo','nsCode'].forEach(id => $('#'+id).addEventListener('input', () => touched[id] = true));
+  $('#nsName').addEventListener('input', () => {
+    const c = $('#nsName').value.toUpperCase().replace(/\b(LTD|LIMITED|PLC|UK|THE|AND|GROUP)\b/g, '').replace(/[^A-Z0-9]/g, '').slice(0, 4);
+    if (!touched.nsPo) $('#nsPo').value = c;
+    if (!touched.nsCode) $('#nsCode').value = c;
+  });
+  $('#nsName').focus();
+  $('#nsGo').addEventListener('click', async () => {
+    const v = id => $('#'+id).value.trim();
+    const row = {
+      name: v('nsName'), code: v('nsCode').toUpperCase(), po_code: v('nsPo').toUpperCase(),
+      email: v('nsMail').toLowerCase(), address1: v('nsA1'), address2: v('nsA2'), postcode: v('nsPC').toUpperCase(),
+      vat_reg: v('nsVat'), terms: Number(v('nsTerms') || 30), vat_rate: Number(v('nsRate') || 0) / 100,
+      notes: 'Added from the PO app.',
+    };
+    const msg = $('#nsMsg');
+    if (!row.name) return say(msg, 'err', 'Enter the supplier name.');
+    if (!row.code) return say(msg, 'err', 'Enter a ledger code.');
+    if (row.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(row.email)) return say(msg, 'err', 'That email address does not look right.');
+    if (!(row.terms >= 0) || !(row.vat_rate >= 0 && row.vat_rate <= 1)) return say(msg, 'err', 'Check the payment terms and VAT rate.');
+    const same = S.suppliers.find(s => s.name.trim().toLowerCase() === row.name.toLowerCase());
+    if (same) return say(msg, 'err', same.name + ' is already on the list' + (same.archived ? ', archived in the invoice system.' : '.'));
+    const b = $('#nsGo'); busy(b, true, 'Adding');
+    const { error } = await sb.from('suppliers').insert(row);
+    busy(b, false, 'Add the supplier');
+    if (error){
+      const dup = error.code === '23505';
+      return say(msg, 'err', !dup ? 'Could not add it: ' + error.message
+        : /po_code/.test(error.message) ? 'Another supplier already has PO code ' + row.po_code + '.'
+        : 'Another supplier already has ledger code ' + row.code + '.');
+    }
+    $('#dlg').close(); await refreshAll(); drawSuppliers();
+    banner('good', row.name + ' added.' + (row.po_code ? ' You can raise POs to it now.' : ' Give it a PO code before raising a PO.'));
+  });
+});
 
 /* ================================================================
    ADMIN
